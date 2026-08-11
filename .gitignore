@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Build output
+main.js
+main.js.map
+*.tsbuildinfo
+
+# Obsidian / editor local files
+.obsidian/
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# Local env / scratch
+.env
+.env.local
+scratch/
+tmp/
+
+# WorkBuddy agent state (project data, keep out of VCS history)
+.workbuddy/memory/

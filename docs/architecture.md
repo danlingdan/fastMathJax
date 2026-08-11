@@ -1,0 +1,67 @@
+# Architecture
+
+## Layers
+
+```text
+main.ts  (plugin lifecycle, commands, settings registration)
+   |
+   +-- engine/          isolated MathJax 4 — knows nothing about Obsidian
+   |     MathJaxEngine.ts   render(tex, {display}) -> HTMLElement
+   |     MathJaxConfig.ts   config -> MathJax options + config hash
+   |     MathCache.ts       LRU cache keyed by hash(tex+display+config+version)
+   |     packages.ts        TeX package registry / metadata
+   |
+   +-- preview/         Reading View adapter (markdown post processor)
+   +-- editor/          Live Preview adapter (CodeMirror 6 extension)
+   +-- view/            test view (engine sandbox, no Obsidian math involved)
+   +-- utils/           hash, version detection, logger
+```
+
+**Hard rule:** `engine/` must never import from `obsidian`. Everything Obsidian-specific lives in
+the adapter layers. This is the mitigation for risk #1 in the plan (Obsidian internal DOM changes).
+
+## Isolation strategy
+
+MathJax 4 is consumed as an ES module graph (`@mathjax/src/js/...`) and bundled by esbuild into
+`main.js`. We construct the document/handler objects ourselves:
+
+```text
+RegisterHTMLHandler(browserAdaptor())   <- once, module scope
+new TeX({packages, macros})             <- input jax
+new CHTML({fontData, ...})              <- output jax
+mathjax.document(document, {InputJax, OutputJax})
+```
+
+Nothing is written to `window.MathJax`. Obsidian's own MathJax instance keeps its own
+`window.MathJax` and its own document object; the two never share state.
+
+One caveat: `RegisterHTMLHandler` mutates a MathJax-internal handler list — but that list belongs to
+*our* bundled copy of MathJax, not Obsidian's, so there is no cross-talk.
+
+## Render pipeline
+
+```text
+render(tex, {display})
+   |
+   +-- cache lookup (hash) --> hit: cloneNode(true)
+   |
+   +-- miss:
+         adaptor-based convert()   TeX -> MathML -> CHTML DOM
+         styles: inject/refresh <style> for CHTML metrics
+         store clone in cache
+```
+
+Every consumer receives a **clone**, never the cached node itself — otherwise moving a node into the
+DOM would empty the cache entry.
+
+## Error handling
+
+```text
+convert() throws  ->  TeX error object
+                  ->  fallback per settings:
+                        1. show raw LaTeX  (default in test view)
+                        2. hand back to Obsidian's built-in MathJax (default in adapters)
+                        3. show error text
+```
+
+The adapters decide the fallback; the engine only reports a typed failure.
