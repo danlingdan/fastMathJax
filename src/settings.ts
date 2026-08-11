@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     cacheSize: 1000,
     renderDebounce: 150,
 
-    enableReadingView: false,
+    enableReadingView: true,
     enableLivePreview: false,
     enableHoverPreview: false,
     enableCanvas: false,
@@ -327,12 +327,12 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         setIcon(notice.createSpan(), "info");
         notice.createSpan({
             text:
-                "This version ships the engine and the render test only. Reading View arrives in " +
-                "v0.0.2 and Live Preview in v0.0.3, at which point these switches become active.",
+                "Reading View is active. Live Preview arrives in v0.0.3, and the remaining surfaces " +
+                "(hover, canvas, popout) are planned for later releases.",
         });
 
         const surfaces: Array<[keyof LatestMathJaxSettings, string, string]> = [
-            ["enableReadingView", "Reading View", "Takes over math in rendered notes (v0.0.2)."],
+            ["enableReadingView", "Reading View", "Re-renders $$…$$ display math in Reading View with the bundled engine."],
             ["enableLivePreview", "Live Preview", "Takes over math in the editor (v0.0.3)."],
             ["enableHoverPreview", "Hover Preview", "Math inside hover popovers (v0.0.7)."],
             ["enableCanvas", "Canvas", "Math inside canvas cards (v0.0.7)."],
@@ -340,13 +340,14 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         ];
 
         for (const [key, name, desc] of surfaces) {
+            const isAvailable = key === "enableReadingView";
             new Setting(root)
                 .setName(name)
                 .setDesc(desc)
                 .addToggle((toggle) =>
                     toggle
                         .setValue(this.plugin.settings[key] as boolean)
-                        .setDisabled(true)
+                        .setDisabled(!isAvailable)
                         .onChange(async (value) => {
                             (this.plugin.settings[key] as boolean) = value;
                             await this.plugin.saveSettings();

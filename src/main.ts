@@ -15,6 +15,7 @@ import {
     toEngineConfig,
 } from "./settings";
 import { MathJaxTestView, TEST_VIEW_TYPE } from "./view/TestView";
+import { createReadingViewProcessor } from "./preview/MathPostProcessor";
 import { logger } from "./utils/logger";
 import { buildVersionReport, type VersionReport } from "./utils/version";
 
@@ -71,6 +72,11 @@ export default class LatestMathJaxPlugin extends Plugin {
         });
 
         this.addSettingTab(new LatestMathJaxSettingTab(this.app, this));
+
+        // Reading View: take over $$…$$ display math in rendered notes. The processor is a no-op
+        // until the engine is ready (render() lazily initialises) and skips any note it cannot
+        // safely re-render, so enabling it can never break a user's notes.
+        this.registerMarkdownPostProcessor(createReadingViewProcessor(this));
 
         logger.debug(`plugin loaded, bundled MathJax ${this.engine.version}`);
     }

@@ -278,3 +278,12 @@
     padding-bottom: var(--size-2-1);
     border-bottom: 1px solid var(--background-modifier-border);
 }
+
+/* --- Reading View takeover ----------------------------------------------- */
+
+/* Our re-rendered display math keeps Obsidian's centering and block layout, independent of
+   MathJax's own injected stylesheet (which may not have applied yet on first paint). */
+.math-block[data-latest-mathjax="true"] > mjx-container {
+    display: block;
+    margin: 0 auto;
+}
