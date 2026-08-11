@@ -1,0 +1,280 @@
+/* ==========================================================================
+   Latest MathJax — plugin styles
+
+   Everything is namespaced under .latest-mathjax-* so nothing can leak into
+   Obsidian's own math output. CHTML's own stylesheet is injected separately by
+   the engine and is not touched here.
+   ========================================================================== */
+
+/* --- rendered math wrappers ---------------------------------------------- */
+
+.latest-mathjax-block {
+    display: block;
+    overflow-x: auto;
+    overflow-y: hidden;
+    text-align: center;
+    padding: 0.25em 0;
+}
+
+.latest-mathjax-inline {
+    display: inline;
+}
+
+/* --- shared notices ------------------------------------------------------ */
+
+.latest-mathjax-warning,
+.latest-mathjax-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-4-2);
+    padding: var(--size-4-2) var(--size-4-3);
+    border-radius: var(--radius-s);
+    font-size: var(--font-ui-smaller);
+    line-height: var(--line-height-tight);
+    margin: var(--size-4-2) 0;
+}
+
+.latest-mathjax-warning {
+    background-color: var(--background-modifier-error-hover);
+    color: var(--text-normal);
+}
+
+.latest-mathjax-notice {
+    background-color: var(--background-secondary-alt);
+    color: var(--text-muted);
+}
+
+.latest-mathjax-warning .svg-icon,
+.latest-mathjax-notice .svg-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+/* --- settings: version block -------------------------------------------- */
+
+.latest-mathjax-version-info {
+    margin-bottom: var(--size-4-4);
+}
+
+.latest-mathjax-version-row {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--size-2-2) 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-size: var(--font-ui-small);
+}
+
+.latest-mathjax-version-label {
+    color: var(--text-muted);
+}
+
+.latest-mathjax-version-value {
+    font-family: var(--font-monospace);
+    color: var(--text-normal);
+}
+
+/* --- settings: preamble ------------------------------------------------- */
+
+.latest-mathjax-preamble {
+    margin-bottom: var(--size-4-4);
+}
+
+.latest-mathjax-preamble-input {
+    width: 100%;
+    min-height: 8em;
+    resize: vertical;
+    font-family: var(--font-monospace);
+    font-size: var(--font-smaller);
+    line-height: var(--line-height-tight);
+}
+
+.latest-mathjax-preamble-status {
+    margin-top: var(--size-2-2);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    min-height: 1.2em;
+}
+
+.latest-mathjax-preamble-status.is-error {
+    color: var(--text-error);
+}
+
+/* --- test view ---------------------------------------------------------- */
+
+.latest-mathjax-test-view {
+    padding: var(--size-4-4);
+    overflow-y: auto;
+}
+
+.latest-mathjax-test-view h3,
+.latest-mathjax-test-view h4 {
+    margin-top: 0;
+    margin-bottom: var(--size-4-2);
+}
+
+.latest-mathjax-test-view h4 {
+    margin-top: var(--size-4-5);
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.latest-mathjax-test-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-4-3);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+}
+
+/* samples */
+
+.latest-mathjax-test-sample-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-2-2);
+    margin-bottom: var(--size-4-2);
+}
+
+.latest-mathjax-run-all {
+    margin-top: var(--size-2-1);
+}
+
+/* input */
+
+.latest-mathjax-test-textarea {
+    width: 100%;
+    min-height: 6em;
+    resize: vertical;
+    font-family: var(--font-monospace);
+    font-size: var(--font-smaller);
+    line-height: var(--line-height-tight);
+}
+
+.latest-mathjax-test-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--size-4-2);
+    margin-top: var(--size-4-2);
+}
+
+.latest-mathjax-test-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2-2);
+    font-size: var(--font-ui-small);
+    cursor: pointer;
+}
+
+.latest-mathjax-test-hint {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
+    margin-left: auto;
+}
+
+/* result */
+
+.latest-mathjax-test-status {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+    margin-bottom: var(--size-4-2);
+    min-height: 1.2em;
+}
+
+.latest-mathjax-test-status.is-error {
+    color: var(--text-error);
+}
+
+.latest-mathjax-test-status.is-ok {
+    color: var(--text-success);
+}
+
+.latest-mathjax-test-output {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    padding: var(--size-4-3);
+    background-color: var(--background-primary-alt);
+    min-height: 4em;
+}
+
+.latest-mathjax-test-raw {
+    font-family: var(--font-monospace);
+    font-size: var(--font-smaller);
+    color: var(--text-error);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+/* run-all rows */
+
+.latest-mathjax-test-row {
+    padding: var(--size-4-2) 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.latest-mathjax-test-row:last-child {
+    border-bottom: none;
+}
+
+.latest-mathjax-test-row-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--size-4-2);
+    margin-bottom: var(--size-2-2);
+}
+
+.latest-mathjax-test-row-label {
+    font-size: var(--font-ui-small);
+    font-weight: var(--font-semibold);
+}
+
+.latest-mathjax-test-row-note {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
+}
+
+.latest-mathjax-test-row.is-failure .latest-mathjax-test-row-label {
+    color: var(--text-error);
+}
+
+.latest-mathjax-test-row.is-expected-failure .latest-mathjax-test-row-label {
+    color: var(--text-warning);
+}
+
+.latest-mathjax-test-row-body {
+    overflow-x: auto;
+}
+
+/* comparison */
+
+.latest-mathjax-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--size-4-4);
+}
+
+@media (max-width: 700px) {
+    .latest-mathjax-compare {
+        grid-template-columns: 1fr;
+    }
+}
+
+.latest-mathjax-compare-cell {
+    min-width: 0;
+    overflow-x: auto;
+}
+
+.latest-mathjax-compare-title {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+    margin-bottom: var(--size-2-2);
+    padding-bottom: var(--size-2-1);
+    border-bottom: 1px solid var(--background-modifier-border);
+}
