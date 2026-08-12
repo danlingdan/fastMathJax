@@ -38,6 +38,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (default 0 = immediate); rapid typing no longer re-renders on every keystroke. The LRU formula
   cache (`MathCache` + `renderCacheKey`) and async `renderAsync` path were already in place from
   earlier stages.
+- **Stage 6 — TeX packages / macros / preamble:** user-facing control of the bundled engine. TeX
+  packages are toggled in settings and wired to `MathJaxConfig.tex.packages`; a **Global preamble**
+  editor defines `\newcommand` / `\DeclareMathOperator` macros (requires the NewCommand package),
+  applied at engine start via `applyPreamble`. Renderer (CHTML), scale, font URL and assistive-mml
+  options are also user-facing. Changing any of these rebuilds the engine (`updateConfig` +
+  `needsRebuild`) and clears the formula cache; Live Preview refreshes immediately on preamble save.
 - Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed

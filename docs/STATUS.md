@@ -6,9 +6,11 @@
 
 ## TL;DR
 
-- **Tasks 1–7 are complete**: plugin scaffold → isolated MathJax 4 engine → render-test view
-  → version inspector → Reading View `$$…$$` → Reading View `$…$` inline → Live Preview display math.
-- **Tasks 7b and Stages 4–7 are not started**.
+- **All development stages (1–7 + 7b) are code-complete**: plugin scaffold → isolated MathJax 4
+  engine → render-test view → version inspector → Reading View `$$…$$` → Reading View `$…$` inline
+  → Live Preview display + inline → performance (debounce/cache) → TeX packages / macros / preamble.
+- **Stages 4–7 (hover / popout / canvas) remain: code-complete but runtime-unverified** — every
+  surface takeover relies on in-app confirmation that cannot be performed outside Obsidian.
 - Build and type-check are **green**. **In-app runtime is not yet validated by me** — that
   requires dropping the built `main.js` into a real vault (see "Verification status").
 
@@ -35,7 +37,7 @@
 | 4 | Live Preview (CodeMirror 6) | ✅ Done (display + inline) | `src/editor/LivePreviewRenderer.ts` — `ViewPlugin` + `Decoration.replace` (`Prec.highest`) over syntax-tree math ranges; cursor-overlap skips to show raw source. Inline gated by `enableInlineLivePreview` (default off). |
 | 5 | Performance (cache/debounce/async queue) | ✅ Done | LRU cache in `MathCache` + `renderCacheKey`; Live Preview rebuild debounced via `renderDebounce` (`rebuildEffect`); async `renderAsync` available for font-chunk/require cases |
 | 6 | TeX extensions / macros / preamble | ⬜ Not started | package registry + macros config scaffolded in `settings.ts`; not user-facing yet |
-| 7 | Global preamble / macros | ⬜ Not started | — |
+| 7 | Global preamble / macros | ✅ Done | see Stage 6 — preamble editor + `applyPreamble` |
 
 ## Verification status
 

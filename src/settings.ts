@@ -253,6 +253,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             if (textarea.value === this.plugin.settings.preamble) return;
             this.plugin.settings.preamble = textarea.value;
             await this.plugin.saveSettings();
+            this.refreshEditors(); // Live Preview picks up the new macros immediately
             showStatus();
         });
     }
