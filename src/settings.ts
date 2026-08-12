@@ -22,6 +22,7 @@ export interface LatestMathJaxSettings {
 
     // Compatibility (surfaces land progressively — see README roadmap)
     enableReadingView: boolean;
+    enableInlineReadingView: boolean;
     enableLivePreview: boolean;
     enableHoverPreview: boolean;
     enableCanvas: boolean;
@@ -46,6 +47,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     renderDebounce: 150,
 
     enableReadingView: true,
+    enableInlineReadingView: false,
     enableLivePreview: false,
     enableHoverPreview: false,
     enableCanvas: false,
@@ -354,6 +356,22 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         }),
                 );
         }
+
+        new Setting(root)
+            .setName("Inline math in Reading View")
+            .setDesc(
+                "Also re-render $…$ inline math in Reading View. Off by default: inline prose math " +
+                    "is riskier to take over than isolated display blocks.",
+            )
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.enableInlineReadingView)
+                    .setDisabled(!this.plugin.settings.enableReadingView)
+                    .onChange(async (value) => {
+                        this.plugin.settings.enableInlineReadingView = value;
+                        await this.plugin.saveSettings();
+                    }),
+            );
 
         new Setting(root)
             .setName("When rendering fails")

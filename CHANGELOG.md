@@ -21,7 +21,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Task 5 — Reading View:** `$$…$$` display math in rendered notes is re-rendered by the bundled
   engine (`src/preview/MathPostProcessor.ts`), replacing only the formula's contents while keeping
   Obsidian's `.math-block` wrapper. Original TeX is recovered by re-parsing the section's raw
-  markdown via `getSectionInfo`; inline math deferred to Task 6.
+  markdown via `getSectionInfo`.
+- **Task 6 — Reading View inline:** `$…$` inline math is now also re-rendered in Reading View.
+  `mathSource.findMathInSection` recovers block + inline TeX in strict document order (code fences
+  stripped, `\$` escapes and stray single `$` ignored), and `MathPostProcessor` pairs each
+  `.math.math-inline` node back to its `$…$` source. Gated behind a new
+  `enableInlineReadingView` setting (default **off** — inline prose math is riskier to take over
+  than isolated display blocks).
 - Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed

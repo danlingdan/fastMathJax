@@ -6,9 +6,9 @@
 
 ## TL;DR
 
-- **Tasks 1–5 are complete**: plugin scaffold → isolated MathJax 4 engine → render-test view
-  → version inspector → Reading View `$$…$$`.
-- **Tasks 6–7 and Stages 4–7 are not started**.
+- **Tasks 1–6 are complete**: plugin scaffold → isolated MathJax 4 engine → render-test view
+  → version inspector → Reading View `$$…$$` → Reading View `$…$` inline.
+- **Tasks 7 and Stages 4–7 are not started**.
 - Build and type-check are **green**. **In-app runtime is not yet validated by me** — that
   requires dropping the built `main.js` into a real vault (see "Verification status").
 
@@ -21,7 +21,7 @@
 | 3 | Test command "Latest MathJax: Open Render Test" | ✅ Done | `src/view/TestView.ts` ItemView + command, side-by-side built-in comparison | `c829d69` |
 | 4 | Version Inspector (plugin vs built-in) | ✅ Done | `src/utils/version.ts`, settings panel, "Show version info" command | `c829d69` |
 | 5 | Reading View prototype — take over `$$…$$` only (inline deferred) | ✅ Done | `src/preview/MathPostProcessor.ts` + `src/utils/mathSource.ts`; recovers TeX from source markdown, keeps Obsidian's `.math-block` wrapper | `4e010af` |
-| 6 | Add `$…$` inline math to Reading View | ⬜ Not started | — | — |
+| 6 | Add `$…$` inline math to Reading View | ✅ Done | `mathSource.findMathInSection` recovers block+inline TeX in document order; `MathPostProcessor` pairs each `.math.math-inline` node to its `$…$` source. Gated behind new `enableInlineReadingView` setting (default off) | (this session) |
 | 7 | Begin CodeMirror Live Preview prototype (display, then inline) | ⬜ Not started | — | — |
 
 ## Stage progress
@@ -31,7 +31,7 @@
 | 0 | Obsidian MathJax behaviour research | ✅ Done | `docs/obsidian-mathjax-research.md` — findings marked [V]/[C]/[?]; confirms Obsidian still ships MathJax 3.x (as of 2026) |
 | 1 | Independent MathJax 4 engine | ✅ Done | `src/engine/*` |
 | 2 | Test view / version inspector | ✅ Done | `src/view/TestView.ts` |
-| 3 | Reading View (`$$`) | ✅ Done | `src/preview/MathPostProcessor.ts` |
+| 3 | Reading View (`$$` + `$…$`) | ✅ Done | `src/preview/MathPostProcessor.ts` |
 | 4 | Live Preview (CodeMirror 6) | ⬜ Not started | depends on Task 7 |
 | 5 | Performance (cache/debounce/async queue) | ⬜ Partial | LRU cache exists in `MathCache`; debounce & render queue not yet wired to the views |
 | 6 | TeX extensions / macros / preamble | ⬜ Not started | package registry + macros config scaffolded in `settings.ts`; not user-facing yet |
