@@ -33,7 +33,7 @@
 | 2 | Test view / version inspector | ✅ Done | `src/view/TestView.ts` |
 | 3 | Reading View (`$$` + `$…$`) | ✅ Done | `src/preview/MathPostProcessor.ts` |
 | 4 | Live Preview (CodeMirror 6) | ✅ Done (display + inline) | `src/editor/LivePreviewRenderer.ts` — `ViewPlugin` + `Decoration.replace` (`Prec.highest`) over syntax-tree math ranges; cursor-overlap skips to show raw source. Inline gated by `enableInlineLivePreview` (default off). |
-| 5 | Performance (cache/debounce/async queue) | ⬜ Partial | LRU cache exists in `MathCache`; debounce & render queue not yet wired to the views |
+| 5 | Performance (cache/debounce/async queue) | ✅ Done | LRU cache in `MathCache` + `renderCacheKey`; Live Preview rebuild debounced via `renderDebounce` (`rebuildEffect`); async `renderAsync` available for font-chunk/require cases |
 | 6 | TeX extensions / macros / preamble | ⬜ Not started | package registry + macros config scaffolded in `settings.ts`; not user-facing yet |
 | 7 | Global preamble / macros | ⬜ Not started | — |
 

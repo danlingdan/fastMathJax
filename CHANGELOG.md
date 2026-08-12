@@ -34,6 +34,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   never reverse-engineers a rendered node. Ranges overlapping the selection are skipped (Obsidian
   shows raw source while editing). `enableLivePreview` is on by default; inline `$…$` is gated behind
   `enableInlineLivePreview` (default **off**).
+- **Stage 5 — Performance:** Live Preview rebuilds are debounced by the `Render debounce` setting
+  (default 0 = immediate); rapid typing no longer re-renders on every keystroke. The LRU formula
+  cache (`MathCache` + `renderCacheKey`) and async `renderAsync` path were already in place from
+  earlier stages.
 - Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed

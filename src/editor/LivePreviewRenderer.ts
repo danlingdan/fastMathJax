@@ -7,7 +7,7 @@ import {
     type ViewUpdate,
     WidgetType,
 } from "@codemirror/view";
-import { Prec, type EditorState, type Extension, type Range } from "@codemirror/state";
+import { Prec, StateEffect, type EditorState, type Extension, type Range } from "@codemirror/state";
 import type { MathJaxEngine } from "../engine/MathJaxEngine";
 import type LatestMathJaxPlugin from "../main";
 import { logger } from "../utils/logger";
@@ -136,6 +136,9 @@ function stripDelimiters(raw: string, display: boolean): string {
     return s.trim();
 }
 
+/** Forces a synchronous decoration rebuild when dispatched (used by the debounce timer). */
+const rebuildEffect = StateEffect.define<null>();
+
 export class LivePreviewRenderer {
     constructor(private plugin: LatestMathJaxPlugin) {}
 
@@ -145,6 +148,7 @@ export class LivePreviewRenderer {
             ViewPlugin.fromClass(
                 class {
                     decorations: DecorationSet;
+                    private timer: number | null = null;
 
                     constructor(view: EditorView) {
                         this.decorations = buildDecorations(
@@ -157,11 +161,10 @@ export class LivePreviewRenderer {
                     }
 
                     update(update: ViewUpdate): void {
-                        if (
-                            update.docChanged ||
-                            update.selectionSet ||
-                            update.viewportChanged
-                        ) {
+                        const forced = update.transactions.some((tr) =>
+                            tr.effects.some((e) => e.is(rebuildEffect)),
+                        );
+                        if (forced) {
                             this.decorations = buildDecorations(
                                 update.state,
                                 plugin.engine,
@@ -169,7 +172,38 @@ export class LivePreviewRenderer {
                                 plugin.settings.enableInlineLivePreview,
                                 true,
                             );
+                            return;
                         }
+
+                        if (
+                            update.docChanged ||
+                            update.selectionSet ||
+                            update.viewportChanged
+                        ) {
+                            const delay = plugin.settings.renderDebounce;
+                            if (this.timer !== null) window.clearTimeout(this.timer);
+                            if (delay <= 0) {
+                                this.decorations = buildDecorations(
+                                    update.state,
+                                    plugin.engine,
+                                    plugin.settings.enableLivePreview,
+                                    plugin.settings.enableInlineLivePreview,
+                                    true,
+                                );
+                            } else {
+                                // Defer the rebuild so rapid typing (e.g. editing a long formula)
+                                // does not re-render on every keystroke. A forced rebuild is
+                                // dispatched once the user pauses.
+                                this.timer = window.setTimeout(() => {
+                                    this.timer = null;
+                                    update.view.dispatch({ effects: rebuildEffect.of(null) });
+                                }, delay);
+                            }
+                        }
+                    }
+
+                    destroy(): void {
+                        if (this.timer !== null) window.clearTimeout(this.timer);
                     }
                 },
                 {
