@@ -90,3 +90,38 @@ Guarantees:
 - When `getSectionInfo` is unavailable (embeds, hover popovers, canvas) or a node has no matching
   source, we leave Obsidian's output untouched.
 - A render error keeps the built-in output in place — the user's notes never break.
+
+## Live Preview adapter (editor/)
+
+A CodeMirror 6 `ViewPlugin` takes over math in the editor via `Decoration.replace` at `Prec.highest`,
+so our widget wins over Obsidian's built-in math widget for the same range:
+
+```text
+Obsidian syntax tree (stream parser)
+   |
+   v
+syntaxTree(state).iterate  ->  nodes whose token name contains "math"
+   |
+   +-- display math: token "math-block" present
+   +-- inline math:  token "math" present (gated by enableInlineLivePreview)
+   +-- state.sliceDoc(from,to)  ->  raw "$…$" / "$$…$$"
+   +-- stripDelimiters(...)      ->  tex
+   +-- if range overlaps the selection: SKIP  ->  Obsidian shows raw source (editing mode)
+   +-- else Decoration.replace({ widget: MathWidget(tex,display) }).range(from,to)
+        |
+        v
+   MathWidget.toDOM()  ->  engine.render(tex, {display})  (or raw source on error)
+```
+
+Guarantees:
+
+- The TeX is read straight from the editor state, never from a rendered DOM node.
+- Cursor-inside-formula is handled by skipping the decoration, so Live Preview's native
+  "show source while editing" behaviour is preserved.
+- `enableLivePreview` is read on every rebuild; the settings tab calls `workspace.updateOptions()`
+  to force all open editors to rebuild the extension when the toggle flips.
+- A render error falls back to showing the raw `$$…$$` / `$…$` text — the editor never breaks.
+
+> **Unverified in-app:** whether `Prec.highest` reliably displaces Obsidian's own math decoration,
+> and whether the math token names follow the underscore-joined convention assumed here, both need a
+> vault drop-in to confirm (see `docs/obsidian-mathjax-research.md` §4).

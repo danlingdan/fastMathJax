@@ -28,6 +28,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.math.math-inline` node back to its `$…$` source. Gated behind a new
   `enableInlineReadingView` setting (default **off** — inline prose math is riskier to take over
   than isolated display blocks).
+- **Task 7 — Live Preview:** math in the editor is now re-rendered by the bundled engine via a
+  CodeMirror 6 `ViewPlugin` (`src/editor/LivePreviewRenderer.ts`). It uses `Decoration.replace` at
+  `Prec.highest` over the syntax-tree math ranges and reads TeX directly from `state.sliceDoc`, so it
+  never reverse-engineers a rendered node. Ranges overlapping the selection are skipped (Obsidian
+  shows raw source while editing). `enableLivePreview` is on by default; inline `$…$` is gated behind
+  `enableInlineLivePreview` (default **off**).
 - Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed

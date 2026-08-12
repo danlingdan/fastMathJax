@@ -21,6 +21,9 @@
   "author": "HuaJiaHao",
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.8",
     "@types/node": "^24.3.0",
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.25.0",

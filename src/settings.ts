@@ -24,6 +24,7 @@ export interface LatestMathJaxSettings {
     enableReadingView: boolean;
     enableInlineReadingView: boolean;
     enableLivePreview: boolean;
+    enableInlineLivePreview: boolean;
     enableHoverPreview: boolean;
     enableCanvas: boolean;
     enablePopout: boolean;
@@ -49,6 +50,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     enableReadingView: true,
     enableInlineReadingView: false,
     enableLivePreview: false,
+    enableInlineLivePreview: false,
     enableHoverPreview: false,
     enableCanvas: false,
     enablePopout: false,
@@ -329,20 +331,20 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         setIcon(notice.createSpan(), "info");
         notice.createSpan({
             text:
-                "Reading View is active. Live Preview arrives in v0.0.3, and the remaining surfaces " +
+                "Reading View and Live Preview use the bundled engine. The remaining surfaces " +
                 "(hover, canvas, popout) are planned for later releases.",
         });
 
         const surfaces: Array<[keyof LatestMathJaxSettings, string, string]> = [
             ["enableReadingView", "Reading View", "Re-renders $$…$$ display math in Reading View with the bundled engine."],
-            ["enableLivePreview", "Live Preview", "Takes over math in the editor (v0.0.3)."],
-            ["enableHoverPreview", "Hover Preview", "Math inside hover popovers (v0.0.7)."],
-            ["enableCanvas", "Canvas", "Math inside canvas cards (v0.0.7)."],
-            ["enablePopout", "Popout windows", "Math in detached windows (v0.0.7)."],
+            ["enableLivePreview", "Live Preview", "Takes over math in the editor with the bundled engine."],
+            ["enableHoverPreview", "Hover Preview", "Math inside hover popovers (planned)."],
+            ["enableCanvas", "Canvas", "Math inside canvas cards (planned)."],
+            ["enablePopout", "Popout windows", "Math in detached windows (planned)."],
         ];
 
         for (const [key, name, desc] of surfaces) {
-            const isAvailable = key === "enableReadingView";
+            const isAvailable = key === "enableReadingView" || key === "enableLivePreview";
             new Setting(root)
                 .setName(name)
                 .setDesc(desc)
@@ -353,6 +355,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         .onChange(async (value) => {
                             (this.plugin.settings[key] as boolean) = value;
                             await this.plugin.saveSettings();
+                            this.refreshEditors();
                         }),
                 );
         }
@@ -370,6 +373,23 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.enableInlineReadingView = value;
                         await this.plugin.saveSettings();
+                    }),
+            );
+
+        new Setting(root)
+            .setName("Inline math in Live Preview")
+            .setDesc(
+                "Also re-render $…$ inline math in Live Preview. Off by default: inline prose math " +
+                    "is riskier to take over than isolated display blocks.",
+            )
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.enableInlineLivePreview)
+                    .setDisabled(!this.plugin.settings.enableLivePreview)
+                    .onChange(async (value) => {
+                        this.plugin.settings.enableInlineLivePreview = value;
+                        await this.plugin.saveSettings();
+                        this.refreshEditors();
                     }),
             );
 
@@ -419,5 +439,14 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }),
             );
+    }
+
+    /**
+     * Rebuilds every open editor view so the registered Live Preview extension re-reads its toggle.
+     * `workspace.updateOptions()` reloads the workspace's editor extensions (which include ours).
+     */
+    private refreshEditors(): void {
+        const ws = this.plugin.app.workspace as unknown as { updateOptions?: () => void };
+        ws.updateOptions?.();
     }
 }

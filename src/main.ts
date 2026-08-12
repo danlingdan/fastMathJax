@@ -16,6 +16,7 @@ import {
 } from "./settings";
 import { MathJaxTestView, TEST_VIEW_TYPE } from "./view/TestView";
 import { createReadingViewProcessor } from "./preview/MathPostProcessor";
+import { LivePreviewRenderer } from "./editor/LivePreviewRenderer";
 import { logger } from "./utils/logger";
 import { buildVersionReport, type VersionReport } from "./utils/version";
 
@@ -77,6 +78,11 @@ export default class LatestMathJaxPlugin extends Plugin {
         // until the engine is ready (render() lazily initialises) and skips any note it cannot
         // safely re-render, so enabling it can never break a user's notes.
         this.registerMarkdownPostProcessor(createReadingViewProcessor(this));
+
+        // Live Preview: take over math in the editor via a CodeMirror 6 decoration. Registered once;
+        // the extension reads the toggles from settings on every rebuild, and the settings tab forces
+        // a workspace refresh when they change.
+        this.registerEditorExtension(new LivePreviewRenderer(this).getExtension());
 
         logger.debug(`plugin loaded, bundled MathJax ${this.engine.version}`);
     }
