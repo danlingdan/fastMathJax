@@ -3,19 +3,26 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.0.1] - unreleased (dev cycle)
+
+> Pre-release. Reading View (originally planned for `v0.0.2`) landed in this cycle; version labels
+> stay provisional until the first tagged release. See [`docs/STATUS.md`](docs/STATUS.md).
 
 ### Added
 
-- Project scaffold: manifest, esbuild build pipeline, TypeScript config.
-- Isolated MathJax 4 engine (`@mathjax/src` 4.1.3) with TeX input and CHTML output.
-- Render test view + command (`Latest MathJax: Open render test`).
-- Version inspector comparing the bundled MathJax version with Obsidian's built-in one.
-- Settings tab (engine info, TeX packages, performance, compatibility toggles).
-- Reading View adapter: `$$…$$` display math in rendered notes is re-rendered by the bundled engine
-  (`src/preview/MathPostProcessor.ts`), replacing only the formula's contents while keeping
+- **Task 1 — Scaffold:** manifest, esbuild + `tsc` pipeline, LICENSE, `.gitignore`, `.gitattributes`.
+- **Task 2 — Engine:** isolated MathJax 4 engine (`@mathjax/src` 4.1.3) with TeX input + CHTML
+  output + New Computer Modern font. All TeX packages statically registered; LRU cache keyed by
+  FNV-1a hash; container-independent metrics.
+- **Task 3 — Test view:** `Latest MathJax: Open render test` command + ItemView with built-in
+  side-by-side comparison.
+- **Task 4 — Version inspector:** bundled-vs-built-in MathJax version report in settings + a
+  `Show version info` command.
+- **Task 5 — Reading View:** `$$…$$` display math in rendered notes is re-rendered by the bundled
+  engine (`src/preview/MathPostProcessor.ts`), replacing only the formula's contents while keeping
   Obsidian's `.math-block` wrapper. Original TeX is recovered by re-parsing the section's raw
-  markdown via `getSectionInfo`. Inline math is deferred to the next task.
+  markdown via `getSectionInfo`; inline math deferred to Task 6.
+- Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed
 

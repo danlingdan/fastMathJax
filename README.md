@@ -3,7 +3,7 @@
 Use a bundled, up-to-date **MathJax 4** engine for math rendering in Obsidian — without touching
 `window.MathJax` or Obsidian's built-in renderer.
 
-> Status: **early development** (`v0.0.1`, Stage 1–2)
+> Status: **active development** (`v0.0.1`) — Tasks 1–5 done: isolated MathJax 4 engine, render-test view, version inspector, Reading View `$$…$$`. Inline math and Live Preview pending.
 
 ## Why
 
@@ -37,11 +37,15 @@ built-in one.
 
 ## Roadmap
 
+> Version labels are provisional until the first tagged release. Reading View (originally slated
+> for `v0.0.2`) was completed inside the `v0.0.1` dev cycle. See [`docs/STATUS.md`](docs/STATUS.md)
+> for the authoritative task/stage progress.
+
 | Version | Goal |
 | --- | --- |
-| v0.0.1 | MathJax 4 engine + test view + version inspector |
-| v0.0.2 | Reading View (post processor) |
-| v0.0.3 | Live Preview prototype (display math) |
+| v0.0.1 | MathJax 4 engine + test view + version inspector + Reading View `$$…$$` (display math) |
+| v0.0.2 | Reading View inline `$…$` (Task 6) |
+| v0.0.3 | Live Preview prototype (display math, Task 7) |
 | v0.0.4 | Full Live Preview (inline math, cursor editing) |
 | v0.0.5 | Cache, debounce, async render queue |
 | v0.0.6 | Global macros / preamble / packages |
@@ -62,6 +66,7 @@ To test inside a vault, symlink or copy `main.js`, `manifest.json` and `styles.c
 
 ## Docs
 
+- [`docs/STATUS.md`](docs/STATUS.md) — **what's done** (task/stage progress, verification, risks)
 - [`docs/architecture.md`](docs/architecture.md)
 - [`docs/obsidian-mathjax-research.md`](docs/obsidian-mathjax-research.md)
 - [`docs/compatibility.md`](docs/compatibility.md)

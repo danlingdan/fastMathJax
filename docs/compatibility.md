@@ -4,10 +4,10 @@
 
 | Surface | Priority | Status |
 | --- | --- | --- |
-| Reading View | 1 | not started |
-| Live Preview | 2 | not started |
+| Reading View | 1 | **done (display `$$`)**; inline `$…$` pending (Task 6) |
+| Live Preview | 2 | not started (Task 7 / Stage 4) |
 | Hover Preview | 3 | not started |
-| Popout Window | 4 | not started |
+| Popout Window | 4 | not started — needs per-document style manager |
 | Canvas | 5 | not started |
 | PDF Export | 6 | not started |
 
