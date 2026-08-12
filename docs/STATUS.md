@@ -27,6 +27,7 @@
 | 5 | Reading View prototype — take over `$$…$$` only (inline deferred) | ✅ Done | `src/preview/MathPostProcessor.ts` + `src/utils/mathSource.ts`; recovers TeX from source markdown, keeps Obsidian's `.math-block` wrapper | `4e010af` |
 | 6 | Add `$…$` inline math to Reading View | ✅ Done | `mathSource.findMathInSection` recovers block+inline TeX in document order; `MathPostProcessor` pairs each `.math.math-inline` node to its `$…$` source. Gated behind new `enableInlineReadingView` setting (default off) | (this session) |
 | 7 | Begin CodeMirror Live Preview prototype (display, then inline) | ✅ Done | `src/editor/LivePreviewRenderer.ts` — `ViewPlugin` + `Decoration.replace` (`Prec.highest`) over syntax-tree math ranges; TeX from `state.sliceDoc`; cursor-overlap skips to source. Inline gated by `enableInlineLivePreview` (default off) | (this session) |
+| 8 | v0.0.8 — SVG renderer + font configuration | ✅ Done | `MathJaxConfig.renderer` now `"chtml" \| "svg"`; engine selects `SVG` output (inline glyph paths, no webfont); settings UI lets users switch and disables the font-URL field for SVG | (this session) |
 
 ## Stage progress
 

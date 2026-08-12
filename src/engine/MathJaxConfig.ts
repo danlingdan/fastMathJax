@@ -14,7 +14,7 @@ export const MATHJAX_FONT_VERSION = "4.1.3";
 export const DEFAULT_FONT_URL =
     `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-newcm-font@${MATHJAX_FONT_VERSION}/chtml/woff2`;
 
-export type RendererKind = "chtml";
+export type RendererKind = "chtml" | "svg";
 
 /**
  * Everything the engine needs. Intentionally free of Obsidian types — the settings layer maps its

@@ -1,6 +1,7 @@
 import { mathjax } from "@mathjax/src/js/mathjax.js";
 import { TeX } from "@mathjax/src/js/input/tex.js";
 import { CHTML } from "@mathjax/src/js/output/chtml.js";
+import { SVG } from "@mathjax/src/js/output/svg.js";
 import { RegisterHTMLHandler } from "@mathjax/src/js/handlers/html.js";
 import { browserAdaptor } from "@mathjax/src/js/adaptors/browserAdaptor.js";
 import { MathJaxNewcmFont } from "@mathjax/mathjax-newcm-font/js/chtml.js";
@@ -70,7 +71,10 @@ export class MathJaxEngine {
     private config: EngineConfig = defaultEngineConfig();
     private hash = "";
     private doc: MathDocument<HTMLElement, Text, Document> | null = null;
-    private outputJax: CHTML<HTMLElement, Text, Document> | null = null;
+    private outputJax:
+        | CHTML<HTMLElement, Text, Document>
+        | SVG<HTMLElement, Text, Document>
+        | null = null;
     private styleNode: HTMLStyleElement | null = null;
     private styleFlushHandle: number | null = null;
     private cache: MathCache;
@@ -118,16 +122,27 @@ export class MathJaxEngine {
             },
         });
 
-        const outputJax = new CHTML<HTMLElement, Text, Document>({
-            fontData: MathJaxNewcmFont,
-            // Font-specific options are separated out automatically by CommonOutputJax.
-            fontURL: config.fontURL,
-            scale: config.scale,
-            displayAlign: "center",
-            displayIndent: "0",
-            // Only emit CSS for constructs actually used; keeps the injected stylesheet small.
-            adaptiveCSS: true,
-        });
+        const outputJax =
+            config.renderer === "svg"
+                ? new SVG<HTMLElement, Text, Document>({
+                      // SVG embeds glyph path data inline (DefaultFont), so it needs no external
+                      // webfont. `fontCache: "local"` puts the shared glyph definitions inside each
+                      // equation's <svg>; "global" would share one cache across the document.
+                      fontCache: "local",
+                      scale: config.scale,
+                      displayAlign: "center",
+                      displayIndent: "0",
+                  })
+                : new CHTML<HTMLElement, Text, Document>({
+                      fontData: MathJaxNewcmFont,
+                      // Font-specific options are separated out automatically by CommonOutputJax.
+                      fontURL: config.fontURL,
+                      scale: config.scale,
+                      displayAlign: "center",
+                      displayIndent: "0",
+                      // Only emit CSS for constructs actually used; keeps the injected stylesheet small.
+                      adaptiveCSS: true,
+                  });
 
         this.doc = mathjax.document(document, {
             InputJax: inputJax,
@@ -348,7 +363,13 @@ export class MathJaxEngine {
         }
         this.styleNode?.remove();
         this.styleNode = null;
-        this.outputJax?.clearCache();
+        // CHTML exposes `clearCache`; SVG's equivalent is `clearFontCache`. Branch on the concrete
+        // type so the teardown is correct for whichever renderer is active.
+        if (this.outputJax instanceof CHTML) {
+            this.outputJax.clearCache();
+        } else if (this.outputJax instanceof SVG) {
+            this.outputJax.clearFontCache();
+        }
         this.doc = null;
         this.outputJax = null;
     }

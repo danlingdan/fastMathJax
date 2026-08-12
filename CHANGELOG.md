@@ -51,6 +51,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   **Hover Preview and Canvas are intentionally out of scope for v0.1.0** — Obsidian does not expose
   the raw TeX for hover math and canvas cards bypass the markdown post-processor, so there is no
   reliable hook to recover the source; both remain as disabled, "planned" toggles.
+- **v0.0.8 — SVG renderer + font configuration:** `MathJaxConfig.renderer` is now `"chtml" | "svg"`.
+  Selecting SVG uses MathJax 4's `SVG` output, which embeds glyph path data inline (`DefaultFont`)
+  and needs **no webfont download** — fully offline-capable. The Font-URL field is disabled in the UI
+  when SVG is selected. CHTML keeps New Computer Modern + `fontURL`. Switching the renderer rebuilds
+  the engine (`needsRebuild` keys on `renderer`); cache and font caches are cleared on teardown.
 - Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed

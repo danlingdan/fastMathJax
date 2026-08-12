@@ -28,7 +28,7 @@ MathJax 4 is consumed as an ES module graph (`@mathjax/src/js/...`) and bundled 
 ```text
 RegisterHTMLHandler(browserAdaptor())   <- once, module scope
 new TeX({packages, macros})             <- input jax
-new CHTML({fontData, ...})              <- output jax
+new CHTML({fontData, ...})  OR  new SVG({fontCache})   <- output jax (selected by settings.renderer)
 mathjax.document(document, {InputJax, OutputJax})
 ```
 
@@ -38,6 +38,20 @@ Nothing is written to `window.MathJax`. Obsidian's own MathJax instance keeps it
 One caveat: `RegisterHTMLHandler` mutates a MathJax-internal handler list — but that list belongs to
 *our* bundled copy of MathJax, not Obsidian's, so there is no cross-talk.
 
+### Renderer choice (v0.0.8)
+
+`EngineConfig.renderer` is `"chtml"` (default) or `"svg"`:
+
+- **CHTML** carries `MathJaxNewcmFont` (New Computer Modern) metrics + a `fontURL` pointing at the
+  woff2 files. Glyph *shapes* come from the webfont; *metrics* are bundled, so layout is correct even
+  offline (only shapes fall back). Emits a `<style>` with `@font-face` / rule data.
+- **SVG** embeds the glyph *path data* inline via `DefaultFont` — **no webfont download** — so it
+  works fully offline. `fontCache: "local"` stores shared path definitions inside each equation's
+  `<svg>`. The Font-URL setting is irrelevant for SVG and is disabled in the UI.
+
+Both output jaxes expose a `styleSheet` (used by `flushStyles` / `ensureStyles`), so the
+per-document style-copy for popouts works for either renderer.
+
 ## Render pipeline
 
 ```text
@@ -46,8 +60,8 @@ render(tex, {display})
    +-- cache lookup (hash) --> hit: cloneNode(true)
    |
    +-- miss:
-         adaptor-based convert()   TeX -> MathML -> CHTML DOM
-         styles: inject/refresh <style> for CHTML metrics
+         adaptor-based convert()   TeX -> MathML -> CHTML|SVG DOM
+         styles: inject/refresh <style> for metrics (CHTML @font-face / SVG font-cache defs)
          store clone in cache
 ```
 

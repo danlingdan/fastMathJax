@@ -1,13 +1,13 @@
 import { App, PluginSettingTab, Setting, setIcon } from "obsidian";
 import type LatestMathJaxPlugin from "./main";
 import { TEX_PACKAGES, defaultEnabledPackages } from "./engine/packages";
-import { DEFAULT_FONT_URL, type EngineConfig } from "./engine/MathJaxConfig";
+import { DEFAULT_FONT_URL, type EngineConfig, type RendererKind } from "./engine/MathJaxConfig";
 
 export type FallbackMode = "raw" | "obsidian" | "error";
 
 export interface LatestMathJaxSettings {
     // Engine
-    renderer: "chtml";
+    renderer: RendererKind;
     packages: string[];
     preamble: string;
     fontURL: string;
@@ -119,14 +119,23 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             });
         }
 
-        new Setting(root)
+        const isSvg = () => this.plugin.settings.renderer === "svg";
+        let fontLocationSetting: Setting;
+
+        const rendererSetting = new Setting(root)
             .setName("Renderer")
-            .setDesc("CommonHTML is the only output in this version; SVG arrives in v0.0.8.")
+            .setDesc("CommonHTML uses webfonts; SVG embeds glyph paths (no font download needed).")
             .addDropdown((dropdown) =>
                 dropdown
                     .addOption("chtml", "CommonHTML")
+                    .addOption("svg", "SVG")
                     .setValue(this.plugin.settings.renderer)
-                    .setDisabled(true),
+                    .onChange(async (value) => {
+                        this.plugin.settings.renderer = value as "chtml" | "svg";
+                        await this.plugin.saveSettings();
+                        this.refreshEditors();
+                        fontLocationSetting.setDisabled(isSvg());
+                    }),
             );
 
         new Setting(root)
@@ -143,12 +152,14 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     }),
             );
 
-        new Setting(root)
+        fontLocationSetting = new Setting(root)
             .setName("Font file location")
             .setDesc(
                 "Where the MathJax 4 woff2 files are fetched from. Font metrics are bundled, so " +
-                    "layout stays correct even offline — only glyph shapes fall back to a system font.",
+                    "layout stays correct even offline — only glyph shapes fall back to a system font. " +
+                    "Ignored when the renderer is SVG.",
             )
+            .setDisabled(isSvg())
             .addText((text) =>
                 text
                     .setPlaceholder(DEFAULT_FONT_URL)
