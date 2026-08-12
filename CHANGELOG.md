@@ -3,10 +3,12 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.0.1] - unreleased (dev cycle)
+## [0.1.0] - unreleased (first release candidate)
 
-> Pre-release. Reading View (originally planned for `v0.0.2`) landed in this cycle; version labels
-> stay provisional until the first tagged release. See [`docs/STATUS.md`](docs/STATUS.md).
+> First feature-complete release. All planned dev-cycle tasks (engine, test view, version inspector,
+> Reading View, Live Preview, performance, TeX packages / macros / preamble, compatibility layer,
+> SVG renderer) are implemented. **Pending:** in-app verification by dropping `main.js` into a vault.
+> Version labels stay provisional until the first tagged release. See [`docs/STATUS.md`](docs/STATUS.md).
 
 ### Added
 

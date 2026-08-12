@@ -3,7 +3,11 @@
 Use a bundled, up-to-date **MathJax 4** engine for math rendering in Obsidian — without touching
 `window.MathJax` or Obsidian's built-in renderer.
 
-> Status: **active development** (`v0.0.1`) — Tasks 1–5 done: isolated MathJax 4 engine, render-test view, version inspector, Reading View `$$…$$`. Inline math and Live Preview pending.
+> Status: **development complete, runtime-unverified.** Every planned feature is implemented
+> (Reading View, Live Preview, inline + display math, TeX packages / macros / preamble, performance
+> tuning, a SVG renderer, and a compatibility layer). What has **not** been done is dropping the
+> built `main.js` into a real vault and confirming it renders — that requires an Obsidian runtime.
+> See [`docs/STATUS.md`](docs/STATUS.md) for the precise verification gap.
 
 ## Why
 
@@ -35,23 +39,58 @@ built-in one.
               Live Preview              Reading View
 ```
 
+## Features
+
+- **Reading View** — `$$…$$` display math and `$…$` inline math re-rendered by the bundled engine
+  (inline gated by `Inline math in Reading View`, default off).
+- **Live Preview** — display and inline math taken over in the editor via a CodeMirror 6 decoration;
+  the raw source shows while your cursor is inside a formula (inline gated by
+  `Inline math in Live Preview`, default off).
+- **TeX packages / macros / preamble** — toggle TeX packages and define a global preamble
+  (`\newcommand`, `\DeclareMathOperator`, …) in settings; macros apply across every note.
+- **Performance** — LRU formula cache + configurable render debounce for Live Preview.
+- **Renderer choice** — CommonHTML (New Computer Modern webfont) or SVG (glyph paths embedded
+  inline, no font download required — fully offline).
+- **Popout windows** — styled automatically (the engine copies its stylesheet into the popout
+  document).
+- **Version inspector** — compare the bundled MathJax against Obsidian's built-in one.
+
+## Compatibility
+
+| Surface | Supported | Notes |
+| --- | --- | --- |
+| Reading View | ✅ | TeX recovered from the section's source markdown |
+| Live Preview | ✅ | syntax-tree ranges; cursor-overlap shows raw source |
+| Popout windows | ✅ | reuses the same adapters + per-document style copy |
+| Hover Preview | ❌ (planned) | Obsidian does not expose the raw TeX for hover math |
+| Canvas | ❌ (planned) | canvas cards bypass the markdown post-processor |
+
+See [`docs/compatibility.md`](docs/compatibility.md) for the detail.
+
+## Settings
+
+- **Engine**: renderer (CHTML / SVG), scale, font file location (CHTML only), TeX packages,
+  global preamble, assistive MathML.
+- **Performance**: cache on/off + size, render debounce.
+- **Compatibility**: toggles for Reading View, Live Preview, Popout (on by default), and the planned
+  Hover / Canvas surfaces.
+
 ## Roadmap
 
-> Version labels are provisional until the first tagged release. Reading View (originally slated
-> for `v0.0.2`) was completed inside the `v0.0.1` dev cycle. See [`docs/STATUS.md`](docs/STATUS.md)
-> for the authoritative task/stage progress.
+> Version labels are provisional until the first tagged release. See
+> [`docs/STATUS.md`](docs/STATUS.md) for the authoritative task/stage progress.
 
-| Version | Goal |
-| --- | --- |
-| v0.0.1 | MathJax 4 engine + test view + version inspector + Reading View `$$…$$` (display math) |
-| v0.0.2 | Reading View inline `$…$` (Task 6) |
-| v0.0.3 | Live Preview prototype (display math, Task 7) |
-| v0.0.4 | Full Live Preview (inline math, cursor editing) |
-| v0.0.5 | Cache, debounce, async render queue |
-| v0.0.6 | Global macros / preamble / packages |
-| v0.0.7 | Hover preview, popout, canvas |
-| v0.0.8 | SVG renderer + font configuration |
-| v0.1.0 | First public release |
+| Version | Goal | Status |
+| --- | --- | --- |
+| v0.0.1 | MathJax 4 engine + test view + version inspector + Reading View `$$…$$` | ✅ |
+| v0.0.2 | Reading View inline `$…$` (Task 6) | ✅ |
+| v0.0.3 | Live Preview prototype (display math, Task 7) | ✅ |
+| v0.0.4 | Full Live Preview (inline math, cursor editing) | ✅ |
+| v0.0.5 | Cache, debounce, async render queue | ✅ |
+| v0.0.6 | Global macros / preamble / packages | ✅ |
+| v0.0.7 | Hover preview, popout, canvas | ⚠️ popout only (hover/canvas out of scope) |
+| v0.0.8 | SVG renderer + font configuration | ✅ |
+| v0.1.0 | First release (pending in-app verification) | 🚧 |
 
 ## Development
 
