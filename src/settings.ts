@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     enableInlineLivePreview: false,
     enableHoverPreview: false,
     enableCanvas: false,
-    enablePopout: false,
+    enablePopout: true,
 
     fallbackMode: "obsidian",
     debugMode: false,
@@ -336,23 +336,22 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 "(hover, canvas, popout) are planned for later releases.",
         });
 
-        const surfaces: Array<[keyof LatestMathJaxSettings, string, string]> = [
-            ["enableReadingView", "Reading View", "Re-renders $$…$$ display math in Reading View with the bundled engine."],
-            ["enableLivePreview", "Live Preview", "Takes over math in the editor with the bundled engine."],
-            ["enableHoverPreview", "Hover Preview", "Math inside hover popovers (planned)."],
-            ["enableCanvas", "Canvas", "Math inside canvas cards (planned)."],
-            ["enablePopout", "Popout windows", "Math in detached windows (planned)."],
+        const surfaces: Array<[keyof LatestMathJaxSettings, string, string, boolean]> = [
+            ["enableReadingView", "Reading View", "Re-renders $$…$$ display math in Reading View with the bundled engine.", true],
+            ["enableLivePreview", "Live Preview", "Takes over math in the editor with the bundled engine.", true],
+            ["enablePopout", "Popout windows", "Math in detached windows. Reuses the Reading View / Live Preview adapters; CHTML styles are copied into the popout document automatically.", true],
+            ["enableHoverPreview", "Hover Preview", "Math inside hover popovers. Not supported yet — Obsidian does not expose the TeX source there (planned).", false],
+            ["enableCanvas", "Canvas", "Math inside canvas cards. Not supported yet — canvas cards bypass the markdown post-processor (planned).", false],
         ];
 
-        for (const [key, name, desc] of surfaces) {
-            const isAvailable = key === "enableReadingView" || key === "enableLivePreview";
+        for (const [key, name, desc, available] of surfaces) {
             new Setting(root)
                 .setName(name)
                 .setDesc(desc)
                 .addToggle((toggle) =>
                     toggle
                         .setValue(this.plugin.settings[key] as boolean)
-                        .setDisabled(!isAvailable)
+                        .setDisabled(!available)
                         .onChange(async (value) => {
                             (this.plugin.settings[key] as boolean) = value;
                             await this.plugin.saveSettings();

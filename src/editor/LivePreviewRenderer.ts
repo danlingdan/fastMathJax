@@ -60,7 +60,9 @@ class MathWidget extends WidgetType {
 
     toDOM(): HTMLElement {
         try {
-            return this.engine.render(this.tex, { display: this.display });
+            const node = this.engine.render(this.tex, { display: this.display });
+            this.engine.ensureStyles(node.ownerDocument);
+            return node;
         } catch (err) {
             logger.warn("Live Preview: render failed, falling back to source:", err);
             // Graceful fallback: show the raw source so the note never breaks.

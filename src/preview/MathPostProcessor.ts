@@ -73,6 +73,7 @@ async function rerender(
         const wrapper = nodes[i];
         try {
             const node = plugin.engine.render(tex, { display });
+            plugin.engine.ensureStyles(wrapper.ownerDocument);
             wrapper.setAttribute(HANDLED_ATTR, "true");
             wrapper.replaceChildren(node);
             logger.debug(`Reading View: re-rendered ${display ? "block" : "inline"} #${i}`);

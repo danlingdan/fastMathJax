@@ -321,6 +321,26 @@ export class MathJaxEngine {
         this.outputJax.styleSheet(this.doc);
     }
 
+    /**
+     * Ensures the engine's CHTML stylesheet is present in `targetDoc`.
+     *
+     * The canonical stylesheet lives in the host window's `document`. A popout window is a *separate*
+     * Document, so formulas rendered there would be unstyled without a local copy. Adapters call this
+     * after rendering into a non-host document (e.g. a popout window's Reading View).
+     *
+     * Cheap and idempotent: it only clones the canonical sheet the first time a given document needs
+     * it. The clone is a snapshot — fine for the small, bounded set of formulas a popout usually
+     * shows (see docs/compatibility.md).
+     */
+    ensureStyles(targetDoc: Document): void {
+        if (targetDoc === document) return;
+        if (targetDoc.getElementById(STYLE_ELEMENT_ID)) return;
+        if (!this.styleNode) return;
+        const clone = this.styleNode.cloneNode(true) as HTMLStyleElement;
+        clone.id = STYLE_ELEMENT_ID;
+        targetDoc.head.appendChild(clone);
+    }
+
     private teardownDocument(): void {
         if (this.styleFlushHandle !== null) {
             window.cancelAnimationFrame(this.styleFlushHandle);

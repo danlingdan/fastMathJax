@@ -17,12 +17,14 @@ import {
 import { MathJaxTestView, TEST_VIEW_TYPE } from "./view/TestView";
 import { createReadingViewProcessor } from "./preview/MathPostProcessor";
 import { LivePreviewRenderer } from "./editor/LivePreviewRenderer";
+import { CompatibilityManager } from "./compatibility/CompatibilityManager";
 import { logger } from "./utils/logger";
 import { buildVersionReport, type VersionReport } from "./utils/version";
 
 export default class LatestMathJaxPlugin extends Plugin {
     settings: LatestMathJaxSettings = { ...DEFAULT_SETTINGS };
     engine!: MathJaxEngine;
+    compatibility!: CompatibilityManager;
     versionReport: VersionReport | null = null;
 
     async onload(): Promise<void> {
@@ -33,6 +35,7 @@ export default class LatestMathJaxPlugin extends Plugin {
             toEngineConfig(this.settings),
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
+        this.compatibility = new CompatibilityManager(this.engine);
 
         // Building the engine is a few milliseconds of work, but it also injects a stylesheet.
         // Deferring to layout-ready keeps startup clean and avoids touching a half-built workspace.

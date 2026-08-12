@@ -44,6 +44,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   applied at engine start via `applyPreamble`. Renderer (CHTML), scale, font URL and assistive-mml
   options are also user-facing. Changing any of these rebuilds the engine (`updateConfig` +
   `needsRebuild`) and clears the formula cache; Live Preview refreshes immediately on preamble save.
+- **Stage 7 — Compatibility (Hover / Popout / Canvas):** a `CompatibilityManager`
+  (`src/compatibility/CompatibilityManager.ts`) now owns the surface-agnostic glue. Key fix:
+  `MathJaxEngine.ensureStyles(targetDoc)` copies the CHTML stylesheet into a non-host document, so
+  **popout windows** render styled math (they reuse the same Reading View / Live Preview adapters).
+  **Hover Preview and Canvas are intentionally out of scope for v0.1.0** — Obsidian does not expose
+  the raw TeX for hover math and canvas cards bypass the markdown post-processor, so there is no
+  reliable hook to recover the source; both remain as disabled, "planned" toggles.
 - Settings tab: engine info, TeX packages, performance, compatibility toggles.
 
 ### Changed
