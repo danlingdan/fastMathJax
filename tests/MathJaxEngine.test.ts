@@ -68,6 +68,24 @@ describe("MathJaxEngine", () => {
         const popout = document.implementation.createHTMLDocument("popout");
         const rendered = instance.renderInto("x", { display: false }, popout);
         expect(rendered.ownerDocument).toBe(popout);
-        expect(popout.getElementById("latest-mathjax-chtml-styles")).not.toBeNull();
+        const copied = popout.getElementById("latest-mathjax-chtml-styles");
+        expect(copied).not.toBeNull();
+        expect(copied?.textContent).toContain("mjx-container");
+    });
+
+    it("refreshes adaptive styles already copied into a print document", () => {
+        const instance = engine();
+        const printDocument = document.implementation.createHTMLDocument("print");
+        instance.renderInto("x", { display: false }, printDocument);
+        const copied = printDocument.getElementById("latest-mathjax-chtml-styles");
+        const hostStyle = document.getElementById(
+            "latest-mathjax-chtml-styles",
+        ) as HTMLStyleElement;
+        hostStyle.sheet?.insertRule(".latest-mathjax-print-probe { color: red; }");
+
+        instance.ensureStyles(printDocument);
+
+        expect(printDocument.getElementById("latest-mathjax-chtml-styles")).toBe(copied);
+        expect(copied?.textContent).toContain("latest-mathjax-print-probe");
     });
 });

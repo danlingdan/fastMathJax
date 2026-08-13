@@ -18,6 +18,17 @@ The public Markdown post-processor receives rendered wrappers plus section metad
 
 Obsidian continues to own parsing, selection behavior, virtual scrolling and source display while editing. A CodeMirror view plugin observes mounted `.math` widgets, maps each widget back to a document position with `EditorView.posAtDOM`, selects the corresponding range from the same conservative scanner, then replaces only the widget contents. This avoids private syntax-node names and avoids competing block decorations, which CodeMirror forbids in view plugins.
 
+## PDF export
+
+Obsidian renders exports into a temporary `.print` document and does not provide section metadata.
+The Reading View adapter detects this public DOM surface, reads the note from `context.sourcePath`,
+and reuses the same conservative source pairing. Currency-like dollars rejected by the scanner are
+escaped only in a temporary re-rendered paragraph; the vault file is never modified.
+
+PDF formulas use a second isolated SVG engine with the active packages, preamble, scale and
+accessibility settings. Embedding glyph paths avoids CommonHTML webfont races in Chromium's print
+window. The print engine is disposed whenever settings change or the plugin unloads.
+
 ## Compatibility and fallback
 
 The compatibility manager identifies popouts by document identity. The engine adopts nodes and copies its stylesheet into permitted popout documents. On a render failure, the configured policy either keeps Obsidian's existing output, shows raw TeX, or shows a compact error element. Unsupported or ambiguous surfaces are left untouched.

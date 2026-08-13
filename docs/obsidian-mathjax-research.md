@@ -1,5 +1,10 @@
 # Stage 0 — Obsidian MathJax behaviour research
 
+> Historical research snapshot from the initial development cycle. It explains the decisions that
+> led to the current implementation, but unchecked items and proposed approaches below are not the
+> current project status. See [`STATUS.md`](STATUS.md), [`architecture.md`](architecture.md), and
+> [`compatibility.md`](compatibility.md) for maintained behavior.
+
 Status legend:
 
 - **[V]** verified from source (npm packages, `obsidian.d.ts`, community plugin source)

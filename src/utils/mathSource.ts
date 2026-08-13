@@ -143,6 +143,31 @@ export function findMathInSection(text: string): RecoveredMath[] {
     return findMathRanges(text).map(({ tex, display }) => ({ tex, display }));
 }
 
+/**
+ * Escapes dollar signs that the conservative scanner did not accept as math delimiters.
+ *
+ * Obsidian's PDF parser can interpret currency-like text such as `$5 and $6, while $x$` as one
+ * formula even though Reading View leaves the currency alone. Escaping only rejected delimiters
+ * makes the two parsers agree without changing real math, code spans, fences, or existing escapes.
+ */
+export function escapeUnsafeDollarDelimiters(text: string): string {
+    const ignored = ignoredCodeRanges(text);
+    const accepted = new Uint8Array(text.length);
+    for (const range of findMathRanges(text)) accepted.fill(1, range.from, range.to);
+
+    let sanitized = "";
+    for (let i = 0; i < text.length; i++) {
+        if (
+            text[i] === "$" &&
+            !ignored[i] &&
+            !accepted[i] &&
+            !isEscaped(text, i)
+        ) sanitized += "\\";
+        sanitized += text[i];
+    }
+    return sanitized;
+}
+
 /** Extracts the line range identified by Obsidian's section metadata. */
 export function textForSection(text: string, lineStart: number, lineEnd: number): string {
     if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 0 || lineEnd < lineStart) {

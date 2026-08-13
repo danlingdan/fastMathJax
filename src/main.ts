@@ -18,6 +18,7 @@ import {
 } from "./settings";
 import { MathJaxTestView, TEST_VIEW_TYPE } from "./view/TestView";
 import { createReadingViewProcessor } from "./preview/MathPostProcessor";
+import { ReadingViewSnapshotStore } from "./preview/ReadingViewSnapshotStore";
 import { LivePreviewRenderer } from "./editor/LivePreviewRenderer";
 import { CompatibilityManager } from "./compatibility/CompatibilityManager";
 import { logger } from "./utils/logger";
@@ -26,7 +27,9 @@ import { buildVersionReport, type VersionReport } from "./utils/version";
 export default class LatestMathJaxPlugin extends Plugin {
     settings: LatestMathJaxSettings = { ...DEFAULT_SETTINGS };
     engine!: MathJaxEngine;
+    private pdfEngine: MathJaxEngine | null = null;
     compatibility!: CompatibilityManager;
+    readonly readingViewSnapshots = new ReadingViewSnapshotStore();
     versionReport: VersionReport | null = null;
 
     async onload(): Promise<void> {
@@ -92,7 +95,11 @@ export default class LatestMathJaxPlugin extends Plugin {
     }
 
     onunload(): void {
-        // The engine owns the injected stylesheet and must clean it up immediately.
+        // Restore Obsidian's own formula DOM before removing the stylesheet used by our output.
+        // This must be synchronous: an async preview rerender can finish after the engine is gone.
+        this.readingViewSnapshots.restoreAll();
+        this.pdfEngine?.dispose();
+        this.pdfEngine = null;
         this.engine?.dispose();
         logger.debug("plugin unloaded");
     }
@@ -111,11 +118,34 @@ export default class LatestMathJaxPlugin extends Plugin {
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
         const rebuilt = this.engine.updateConfig(toEngineConfig(this.settings));
+        // PDF uses a private SVG engine so export never depends on remote CHTML webfonts.
+        this.pdfEngine?.dispose();
+        this.pdfEngine = null;
         if (rebuilt) logger.debug("engine reconfigured");
+    }
+
+    renderInto(
+        tex: string,
+        display: boolean,
+        targetDocument: Document,
+        pdfExport = false,
+    ): HTMLElement {
+        if (!pdfExport) return this.engine.renderInto(tex, { display }, targetDocument);
+        if (!this.pdfEngine) {
+            const config = toEngineConfig(this.settings);
+            config.renderer = "svg";
+            this.pdfEngine = new MathJaxEngine(
+                config,
+                this.settings.cacheEnabled ? this.settings.cacheSize : 0,
+            );
+        }
+        return this.pdfEngine.renderInto(tex, { display }, targetDocument);
     }
 
     /** Rebuilds both editor decorations and rendered Markdown after a relevant setting changes. */
     refreshRenderedSurfaces(): void {
+        // Do not leave the old engine's DOM mounted while its configuration and stylesheet change.
+        this.readingViewSnapshots.restoreAll();
         document
             .querySelectorAll("[data-latest-mathjax]")
             .forEach((node) => node.removeAttribute("data-latest-mathjax"));

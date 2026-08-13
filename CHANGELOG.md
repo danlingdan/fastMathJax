@@ -1,88 +1,46 @@
 # Changelog
 
+All notable changes to this project are documented here. The format loosely follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## 0.1.3 - 2026-08-14
+
+- Made Reading View takeover reversible across settings refresh, plugin disable and reload, so
+  mounted formulas never become blank when the private engine stylesheet is removed.
+- Fixed PDF export from both Live Preview and Reading View: global preamble macros such as `\R`,
+  inline/display formulas, and currency-like dollar text now export consistently.
+- Added a dedicated isolated SVG renderer for PDF output, embedding glyph paths so cold exports do
+  not depend on CommonHTML webfont timing or network availability.
+- Export invalid expressions as readable source when Obsidian fallback styling would conflict in
+  the print document.
+- Added the maintained future roadmap and expanded the automated regression suite to 32 tests.
+
 ## 0.1.2 - 2026-08-13
 
 - Fixed the community-directory manifest description error.
 - Added GitHub build-provenance attestations and limited releases to the three supported assets.
-- Removed the obsolete `builtin-modules` dependency and addressed safe automated-review findings for promises, DOM helpers, deprecated slider tooltips and CSS scoping.
+- Removed the obsolete `builtin-modules` dependency and addressed safe automated-review findings
+  for promises, DOM helpers, deprecated slider tooltips and CSS scoping.
 
 ## 0.1.1 - 2026-08-13
 
-- Added GitHub Actions CI and tag-driven release automation with tests, production build, ZIP packaging and SHA256 assets.
-- Corrected the GitHub author URL and marked the plugin desktop-only until mobile acceptance testing is completed.
+- Added GitHub Actions CI and tag-driven release automation with tests, production builds and
+  release publication.
+- Corrected the GitHub author URL and marked the plugin desktop-only until mobile acceptance
+  testing is completed.
 - Switched official release tags to the Obsidian-required plain `x.y.z` format.
 
 ## 0.1.0 - 2026-08-13
 
-- Refactored the renderer into an isolated, revisioned MathJax 4.1.3 engine with complete New Computer Modern CommonHTML/SVG glyph chunks.
-- Completed Reading View and Live Preview takeover, including exact section/range recovery, code-fence exclusion, popout documents and graceful fallback.
-- Added normalized settings, effective surface refresh, LRU caching, release metadata validation and a 27-test unit/integration suite.
-- Verified the production plugin in an isolated Obsidian 1.13.6 vault with no captured runtime errors.
-- Scoped away Obsidian MathJax 3 pseudo-glyphs inside MathJax 4 output, fixing detached square-root bars and other double-drawn symbols.
-- Prevented Live Preview's DOM observer and unload refresh from recursively starving Reading View's virtual renderer; repeated view switching now keeps the full note visible.
-- Made Reading View source pairing fail closed when wrapper counts disagree with conservative TeX recovery.
-
-All notable changes to this project are documented here.
-Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
-## [0.1.0] - unreleased (first release candidate)
-
-> First feature-complete release. All planned dev-cycle tasks (engine, test view, version inspector,
-> Reading View, Live Preview, performance, TeX packages / macros / preamble, compatibility layer,
-> SVG renderer) are implemented. **Pending:** in-app verification by dropping `main.js` into a vault.
-> Version labels stay provisional until the first tagged release. See [`docs/STATUS.md`](docs/STATUS.md).
-
-### Added
-
-- **Task 1 — Scaffold:** manifest, esbuild + `tsc` pipeline, LICENSE, `.gitignore`, `.gitattributes`.
-- **Task 2 — Engine:** isolated MathJax 4 engine (`@mathjax/src` 4.1.3) with TeX input + CHTML
-  output + New Computer Modern font. All TeX packages statically registered; LRU cache keyed by
-  FNV-1a hash; container-independent metrics.
-- **Task 3 — Test view:** `Latest MathJax: Open render test` command + ItemView with built-in
-  side-by-side comparison.
-- **Task 4 — Version inspector:** bundled-vs-built-in MathJax version report in settings + a
-  `Show version info` command.
-- **Task 5 — Reading View:** `$$…$$` display math in rendered notes is re-rendered by the bundled
-  engine (`src/preview/MathPostProcessor.ts`), replacing only the formula's contents while keeping
-  Obsidian's `.math-block` wrapper. Original TeX is recovered by re-parsing the section's raw
-  markdown via `getSectionInfo`.
-- **Task 6 — Reading View inline:** `$…$` inline math is now also re-rendered in Reading View.
-  `mathSource.findMathInSection` recovers block + inline TeX in strict document order (code fences
-  stripped, `\$` escapes and stray single `$` ignored), and `MathPostProcessor` pairs each
-  `.math.math-inline` node back to its `$…$` source. Gated behind a new
-  `enableInlineReadingView` setting (default **off** — inline prose math is riskier to take over
-  than isolated display blocks).
-- **Task 7 — Live Preview:** math in the editor is now re-rendered by the bundled engine via a
-  CodeMirror 6 `ViewPlugin` (`src/editor/LivePreviewRenderer.ts`). It uses `Decoration.replace` at
-  `Prec.highest` over the syntax-tree math ranges and reads TeX directly from `state.sliceDoc`, so it
-  never reverse-engineers a rendered node. Ranges overlapping the selection are skipped (Obsidian
-  shows raw source while editing). `enableLivePreview` is on by default; inline `$…$` is gated behind
-  `enableInlineLivePreview` (default **off**).
-- **Stage 5 — Performance:** Live Preview rebuilds are debounced by the `Render debounce` setting
-  (default 0 = immediate); rapid typing no longer re-renders on every keystroke. The LRU formula
-  cache (`MathCache` + `renderCacheKey`) and async `renderAsync` path were already in place from
-  earlier stages.
-- **Stage 6 — TeX packages / macros / preamble:** user-facing control of the bundled engine. TeX
-  packages are toggled in settings and wired to `MathJaxConfig.tex.packages`; a **Global preamble**
-  editor defines `\newcommand` / `\DeclareMathOperator` macros (requires the NewCommand package),
-  applied at engine start via `applyPreamble`. Renderer (CHTML), scale, font URL and assistive-mml
-  options are also user-facing. Changing any of these rebuilds the engine (`updateConfig` +
-  `needsRebuild`) and clears the formula cache; Live Preview refreshes immediately on preamble save.
-- **Stage 7 — Compatibility (Hover / Popout / Canvas):** a `CompatibilityManager`
-  (`src/compatibility/CompatibilityManager.ts`) now owns the surface-agnostic glue. Key fix:
-  `MathJaxEngine.ensureStyles(targetDoc)` copies the CHTML stylesheet into a non-host document, so
-  **popout windows** render styled math (they reuse the same Reading View / Live Preview adapters).
-  **Hover Preview and Canvas are intentionally out of scope for v0.1.0** — Obsidian does not expose
-  the raw TeX for hover math and canvas cards bypass the markdown post-processor, so there is no
-  reliable hook to recover the source; both remain as disabled, "planned" toggles.
-- **v0.0.8 — SVG renderer + font configuration:** `MathJaxConfig.renderer` is now `"chtml" | "svg"`.
-  Selecting SVG uses MathJax 4's `SVG` output, which embeds glyph path data inline (`DefaultFont`)
-  and needs **no webfont download** — fully offline-capable. The Font-URL field is disabled in the UI
-  when SVG is selected. CHTML keeps New Computer Modern + `fontURL`. Switching the renderer rebuilds
-  the engine (`needsRebuild` keys on `renderer`); cache and font caches are cleared on teardown.
-- Settings tab: engine info, TeX packages, performance, compatibility toggles.
-
-### Changed
-
-- `enableReadingView` now defaults to `true` and its settings toggle is enabled; the compatibility
-  notice reflects that Reading View has shipped.
+- Introduced an isolated, revisioned MathJax 4.1.3 engine with CommonHTML and SVG output.
+- Added Reading View and opt-in Live Preview takeover, including source recovery, code exclusion,
+  popout-document support and graceful fallback.
+- Added TeX package controls, a global preamble, normalized settings, LRU caching, render debounce,
+  a version inspector and a side-by-side render test view.
+- Added complete New Computer Modern dynamic glyph chunks and scoped away Obsidian MathJax 3
+  pseudo-glyphs inside plugin output, fixing detached square-root bars and double-drawn symbols.
+- Prevented view-switching refresh loops and made Reading View source pairing fail closed when
+  wrapper counts do not match conservative TeX recovery.
+- Added release metadata validation and a 27-test unit/integration suite.
+- Verified the production plugin in an isolated Obsidian 1.13.6 desktop vault with no captured
+  runtime errors.

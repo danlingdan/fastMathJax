@@ -367,17 +367,32 @@ export class MathJaxEngine {
      * Document, so formulas rendered there would be unstyled without a local copy. Adapters call this
      * after rendering into a non-host document (e.g. a popout window's Reading View).
      *
-     * Cheap and idempotent: it only clones the canonical sheet the first time a given document needs
-     * it. The clone is a snapshot — fine for the small, bounded set of formulas a popout usually
-     * shows (see docs/compatibility.md).
+     * CSSOM rules inserted after the style element was attached are not preserved by cloneNode().
+     * Serialize the live rule list instead, and refresh an existing target sheet after every render.
+     * This matters for PDF export: Obsidian copies styles into a temporary print window before it
+     * renders the note, so a one-time snapshot can contain none of the adaptive glyph rules.
      */
     ensureStyles(targetDoc: Document): void {
         if (targetDoc === document) return;
-        if (targetDoc.getElementById(STYLE_ELEMENT_ID)) return;
         if (!this.styleNode) return;
-        const clone = this.styleNode.cloneNode(true) as HTMLStyleElement;
-        clone.id = STYLE_ELEMENT_ID;
-        targetDoc.head.appendChild(clone);
+        const css = this.serializedStyles();
+        let target = targetDoc.getElementById(STYLE_ELEMENT_ID) as HTMLStyleElement | null;
+        if (!target) {
+            target = targetDoc.createElement("style");
+            target.id = STYLE_ELEMENT_ID;
+            targetDoc.head.appendChild(target);
+        }
+        target.textContent = css;
+    }
+
+    private serializedStyles(): string {
+        const sheet = this.styleNode?.sheet;
+        if (!sheet) return this.styleNode?.textContent ?? "";
+        try {
+            return Array.from(sheet.cssRules, (rule) => rule.cssText).join("\n");
+        } catch {
+            return this.styleNode?.textContent ?? "";
+        }
     }
 
     private teardownDocument(): void {

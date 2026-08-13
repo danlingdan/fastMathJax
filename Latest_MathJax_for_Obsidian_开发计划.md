@@ -1,5 +1,10 @@
 # Latest MathJax for Obsidian 插件开发计划
 
+> **文档状态：历史设计记录。** 本文保留初始开发阶段的路线、候选方案和未勾选调研项，
+> 不再作为当前完成度或版本计划的依据。当前正式版本、验证结果和实际架构请分别查看
+> [`docs/STATUS.md`](docs/STATUS.md)、[`CHANGELOG.md`](CHANGELOG.md) 与
+> [`docs/architecture.md`](docs/architecture.md)。
+
 ## 1. 项目概述
 
 ### 1.1 项目名称

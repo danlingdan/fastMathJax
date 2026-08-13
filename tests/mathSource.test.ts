@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     extractDisplayMath,
+    escapeUnsafeDollarDelimiters,
     findMathInSection,
     findMathRanges,
     textForSection,
@@ -52,6 +53,18 @@ describe("findMathInSection", () => {
     it("continues after an unclosed display opener", () => {
         expect(findMathInSection("$$ unclosed and later $x$"))
             .toEqual([{ tex: "x", display: false }]);
+    });
+});
+
+describe("escapeUnsafeDollarDelimiters", () => {
+    it("escapes currency-like dollars while preserving real math", () => {
+        expect(escapeUnsafeDollarDelimiters("It costs $5 and $6, while $x^2$ is math."))
+            .toBe(String.raw`It costs \$5 and \$6, while $x^2$ is math.`);
+    });
+
+    it("does not alter fenced code, inline code, or existing escapes", () => {
+        const source = [String.raw`Already \$literal and $x$.`, "`$inline$`", "```", "$fenced$", "```"].join("\n");
+        expect(escapeUnsafeDollarDelimiters(source)).toBe(source);
     });
 });
 
