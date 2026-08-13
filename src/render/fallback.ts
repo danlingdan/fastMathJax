@@ -29,7 +29,7 @@ export function createFallbackElement(
     error: unknown,
 ): HTMLElement {
     const presentation = fallbackPresentation(mode, tex, display, error);
-    const element = doc.createElement(display ? "div" : "span");
+    const element = doc.createDocumentFragment().createEl(display ? "div" : "span");
     element.className = `latest-mathjax-fallback is-${presentation.kind}`;
     element.textContent = presentation.text;
     return element;

@@ -55,8 +55,10 @@ export function createReadingViewProcessor(
         const blockTex = sources.filter((s) => s.display);
         const inlineTex = sources.filter((s) => !s.display);
 
-        rerender(plugin, blockNodes, blockTex, true);
-        rerender(plugin, inlineNodes, inlineTex, false);
+        await Promise.all([
+            rerender(plugin, blockNodes, blockTex, true),
+            rerender(plugin, inlineNodes, inlineTex, false),
+        ]);
     };
 }
 

@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -52,11 +54,10 @@ jobs:
         run: |
           mkdir release
           cp main.js manifest.json styles.css release/
-          (
-            cd release
-            zip -9 "latest-mathjax-${GITHUB_REF_NAME}.zip" main.js manifest.json styles.css
-            sha256sum main.js manifest.json styles.css "latest-mathjax-${GITHUB_REF_NAME}.zip" > SHA256SUMS.txt
-          )
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: release/*
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,8 +67,6 @@ jobs:
             release/main.js \
             release/manifest.json \
             release/styles.css \
-            "release/latest-mathjax-${GITHUB_REF_NAME}.zip" \
-            release/SHA256SUMS.txt \
             --verify-tag \
             --title "Latest MathJax ${GITHUB_REF_NAME}" \
             --generate-notes

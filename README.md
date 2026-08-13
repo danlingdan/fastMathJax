@@ -119,7 +119,8 @@ git push origin 0.1.2
 ```
 
 The tag workflow verifies version consistency, installs from the lockfile, runs the complete check,
-and publishes `main.js`, `manifest.json`, `styles.css`, an installation ZIP and SHA256 checksums.
+attests their build provenance, and publishes the three assets supported by the community directory:
+`main.js`, `manifest.json`, and `styles.css`.
 
 ## Docs
 

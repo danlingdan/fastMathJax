@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 - 2026-08-13
+
+- Fixed the community-directory manifest description error.
+- Added GitHub build-provenance attestations and limited releases to the three supported assets.
+- Removed the obsolete `builtin-modules` dependency and addressed safe automated-review findings for promises, DOM helpers, deprecated slider tooltips and CSS scoping.
+
 ## 0.1.1 - 2026-08-13
 
 - Added GitHub Actions CI and tag-driven release automation with tests, production build, ZIP packaging and SHA256 assets.

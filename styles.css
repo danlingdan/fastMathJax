@@ -283,6 +283,7 @@
 
 /* Our re-rendered display math keeps Obsidian's centering and block layout, independent of
    MathJax's own injected stylesheet (which may not have applied yet on first paint). */
+/* stylelint-disable-next-line selector-type-no-unknown */
 .math-block[data-latest-mathjax="true"] > mjx-container {
     display: block;
     margin: 0 auto;
@@ -305,6 +306,8 @@
  * second glyph with incompatible metrics (most visibly detaching a square-root bar).
  * Scope the reset to our marked containers so Obsidian's own formulas are untouched.
  */
-mjx-container[data-latest-mathjax-engine] mjx-c::before {
-    content: none !important;
+/* stylelint-disable selector-type-no-unknown */
+.math mjx-container[data-latest-mathjax-engine] mjx-c::before {
+    content: none;
 }
+/* stylelint-enable selector-type-no-unknown */

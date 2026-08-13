@@ -1,9 +1,8 @@
-import { App, PluginSettingTab, Setting, setIcon } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, setIcon } from "obsidian";
 import type LatestMathJaxPlugin from "./main";
 import { TEX_PACKAGES } from "./engine/packages";
 import { DEFAULT_FONT_URL } from "./engine/MathJaxConfig";
 import {
-    DEFAULT_SETTINGS,
     type FallbackMode,
     type LatestMathJaxSettings,
 } from "./settingsModel";
@@ -84,7 +83,6 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 slider
                     .setLimits(0.5, 2, 0.05)
                     .setValue(this.plugin.settings.scale)
-                    .setDynamicTooltip()
                     .onChange(async (value) => {
                         this.plugin.settings.scale = value;
                         await this.plugin.saveSettings();
@@ -203,12 +201,15 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
 
         // Applied on blur rather than on every keystroke: changing the preamble rebuilds the engine
         // and clears the cache, which is far too heavy to do per character.
-        textarea.addEventListener("blur", async () => {
+        textarea.addEventListener("blur", () => {
             if (textarea.value === this.plugin.settings.preamble) return;
             this.plugin.settings.preamble = textarea.value;
-            await this.plugin.saveSettings();
-            this.plugin.refreshRenderedSurfaces();
-            showStatus();
+            void this.plugin.saveSettings().then(() => {
+                this.plugin.refreshRenderedSurfaces();
+                showStatus();
+            }).catch(() => {
+                new Notice("Latest MathJax: failed to save preamble.");
+            });
         });
     }
 
@@ -250,7 +251,6 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 slider
                     .setLimits(0, 500, 10)
                     .setValue(this.plugin.settings.renderDebounce)
-                    .setDynamicTooltip()
                     .onChange(async (value) => {
                         this.plugin.settings.renderDebounce = value;
                         await this.plugin.saveSettings();

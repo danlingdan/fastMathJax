@@ -17,6 +17,9 @@ if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== manifest.version) {
         `release tag ${process.env.RELEASE_TAG} != manifest version ${manifest.version}`,
     );
 }
+if (/\bobsidian\b/iu.test(manifest.description)) {
+    errors.push("manifest description must not include the redundant word Obsidian");
+}
 if (versions[manifest.version] !== manifest.minAppVersion) {
     errors.push(
         `versions.json does not map ${manifest.version} to ${manifest.minAppVersion}`,
