@@ -1,76 +1,15 @@
 import { App, PluginSettingTab, Setting, setIcon } from "obsidian";
 import type LatestMathJaxPlugin from "./main";
-import { TEX_PACKAGES, defaultEnabledPackages } from "./engine/packages";
-import { DEFAULT_FONT_URL, type EngineConfig, type RendererKind } from "./engine/MathJaxConfig";
+import { TEX_PACKAGES } from "./engine/packages";
+import { DEFAULT_FONT_URL } from "./engine/MathJaxConfig";
+import {
+    DEFAULT_SETTINGS,
+    type FallbackMode,
+    type LatestMathJaxSettings,
+} from "./settingsModel";
 
-export type FallbackMode = "raw" | "obsidian" | "error";
-
-export interface LatestMathJaxSettings {
-    // Engine
-    renderer: RendererKind;
-    packages: string[];
-    preamble: string;
-    fontURL: string;
-    scale: number;
-    fontSize: number;
-    enableAssistiveMml: boolean;
-
-    // Performance
-    cacheEnabled: boolean;
-    cacheSize: number;
-    renderDebounce: number;
-
-    // Compatibility (surfaces land progressively — see README roadmap)
-    enableReadingView: boolean;
-    enableInlineReadingView: boolean;
-    enableLivePreview: boolean;
-    enableInlineLivePreview: boolean;
-    enableHoverPreview: boolean;
-    enableCanvas: boolean;
-    enablePopout: boolean;
-
-    // Behaviour
-    fallbackMode: FallbackMode;
-    debugMode: boolean;
-}
-
-export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
-    renderer: "chtml",
-    packages: defaultEnabledPackages(),
-    preamble: "",
-    fontURL: DEFAULT_FONT_URL,
-    scale: 1,
-    fontSize: 16,
-    enableAssistiveMml: false,
-
-    cacheEnabled: true,
-    cacheSize: 1000,
-    renderDebounce: 150,
-
-    enableReadingView: true,
-    enableInlineReadingView: false,
-    enableLivePreview: false,
-    enableInlineLivePreview: false,
-    enableHoverPreview: false,
-    enableCanvas: false,
-    enablePopout: true,
-
-    fallbackMode: "obsidian",
-    debugMode: false,
-};
-
-/** Projects user settings onto the engine's own config shape. */
-export function toEngineConfig(settings: LatestMathJaxSettings): EngineConfig {
-    return {
-        renderer: settings.renderer,
-        packages: settings.packages,
-        preamble: settings.preamble,
-        fontSize: settings.fontSize,
-        scale: settings.scale,
-        fontURL: settings.fontURL,
-        enableAssistiveMml: settings.enableAssistiveMml,
-    };
-}
+export { DEFAULT_SETTINGS, normalizeSettings, toEngineConfig } from "./settingsModel";
+export type { FallbackMode, LatestMathJaxSettings } from "./settingsModel";
 
 export class LatestMathJaxSettingTab extends PluginSettingTab {
     constructor(
@@ -122,7 +61,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         const isSvg = () => this.plugin.settings.renderer === "svg";
         let fontLocationSetting: Setting;
 
-        const rendererSetting = new Setting(root)
+        new Setting(root)
             .setName("Renderer")
             .setDesc("CommonHTML uses webfonts; SVG embeds glyph paths (no font download needed).")
             .addDropdown((dropdown) =>
@@ -133,7 +72,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.renderer = value as "chtml" | "svg";
                         await this.plugin.saveSettings();
-                        this.refreshEditors();
+                        this.plugin.refreshRenderedSurfaces();
                         fontLocationSetting.setDisabled(isSvg());
                     }),
             );
@@ -149,6 +88,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.scale = value;
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
 
@@ -167,6 +107,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.fontURL = value.trim() || DEFAULT_FONT_URL;
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             )
             .addExtraButton((button) =>
@@ -176,6 +117,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onClick(async () => {
                         this.plugin.settings.fontURL = DEFAULT_FONT_URL;
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                         this.display();
                     }),
             );
@@ -208,6 +150,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         else next.delete(pkg.id);
                         this.plugin.settings.packages = [...next];
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
 
@@ -264,7 +207,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             if (textarea.value === this.plugin.settings.preamble) return;
             this.plugin.settings.preamble = textarea.value;
             await this.plugin.saveSettings();
-            this.refreshEditors(); // Live Preview picks up the new macros immediately
+            this.plugin.refreshRenderedSurfaces();
             showStatus();
         });
     }
@@ -366,7 +309,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         .onChange(async (value) => {
                             (this.plugin.settings[key] as boolean) = value;
                             await this.plugin.saveSettings();
-                            this.refreshEditors();
+                            this.plugin.refreshRenderedSurfaces();
                         }),
                 );
         }
@@ -384,6 +327,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.enableInlineReadingView = value;
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
 
@@ -400,7 +344,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.enableInlineLivePreview = value;
                         await this.plugin.saveSettings();
-                        this.refreshEditors();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
 
@@ -416,6 +360,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.fallbackMode = value as FallbackMode;
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
     }
@@ -448,16 +393,9 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.enableAssistiveMml = value;
                         await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
     }
 
-    /**
-     * Rebuilds every open editor view so the registered Live Preview extension re-reads its toggle.
-     * `workspace.updateOptions()` reloads the workspace's editor extensions (which include ours).
-     */
-    private refreshEditors(): void {
-        const ws = this.plugin.app.workspace as unknown as { updateOptions?: () => void };
-        ws.updateOptions?.();
-    }
 }

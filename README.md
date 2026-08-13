@@ -3,11 +3,9 @@
 Use a bundled, up-to-date **MathJax 4** engine for math rendering in Obsidian — without touching
 `window.MathJax` or Obsidian's built-in renderer.
 
-> Status: **development complete, runtime-unverified.** Every planned feature is implemented
-> (Reading View, Live Preview, inline + display math, TeX packages / macros / preamble, performance
-> tuning, a SVG renderer, and a compatibility layer). What has **not** been done is dropping the
-> built `main.js` into a real vault and confirming it renders — that requires an Obsidian runtime.
-> See [`docs/STATUS.md`](docs/STATUS.md) for the precise verification gap.
+> Status: **0.1.0 feature-complete and runtime-verified.** Typecheck, 27 automated tests,
+> production/release checks, and isolated-vault acceptance on Obsidian 1.13.6 pass.
+> See [`docs/STATUS.md`](docs/STATUS.md) for the verification record and remaining surface limits.
 
 ## Why
 
@@ -43,7 +41,7 @@ built-in one.
 
 - **Reading View** — `$$…$$` display math and `$…$` inline math re-rendered by the bundled engine
   (inline gated by `Inline math in Reading View`, default off).
-- **Live Preview** — display and inline math taken over in the editor via a CodeMirror 6 decoration;
+- **Live Preview** — display and inline math taken over through Obsidian's mounted editor widgets;
   the raw source shows while your cursor is inside a formula (inline gated by
   `Inline math in Live Preview`, default off).
 - **TeX packages / macros / preamble** — toggle TeX packages and define a global preamble
@@ -60,7 +58,7 @@ built-in one.
 | Surface | Supported | Notes |
 | --- | --- | --- |
 | Reading View | ✅ | TeX recovered from the section's source markdown |
-| Live Preview | ✅ | syntax-tree ranges; cursor-overlap shows raw source |
+| Live Preview | ✅ | public editor widgets + document-position mapping |
 | Popout windows | ✅ | reuses the same adapters + per-document style copy |
 | Hover Preview | ❌ (planned) | Obsidian does not expose the raw TeX for hover math |
 | Canvas | ❌ (planned) | canvas cards bypass the markdown post-processor |
@@ -90,7 +88,7 @@ See [`docs/compatibility.md`](docs/compatibility.md) for the detail.
 | v0.0.6 | Global macros / preamble / packages | ✅ |
 | v0.0.7 | Hover preview, popout, canvas | ⚠️ popout only (hover/canvas out of scope) |
 | v0.0.8 | SVG renderer + font configuration | ✅ |
-| v0.1.0 | First release (pending in-app verification) | 🚧 |
+| v0.1.0 | First release scope and in-app verification | ✅ |
 
 ## Development
 
@@ -98,6 +96,8 @@ See [`docs/compatibility.md`](docs/compatibility.md) for the detail.
 npm install     # install dependencies
 npm run dev     # watch build
 npm run build   # type-check + production build
+npm test        # automated unit/integration tests
+npm run check   # complete local release gate
 ```
 
 To test inside a vault, symlink or copy `main.js`, `manifest.json` and `styles.css` into

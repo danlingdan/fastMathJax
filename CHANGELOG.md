@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0 - 2026-08-13
+
+- Refactored the renderer into an isolated, revisioned MathJax 4.1.3 engine with complete New Computer Modern CommonHTML/SVG glyph chunks.
+- Completed Reading View and Live Preview takeover, including exact section/range recovery, code-fence exclusion, popout documents and graceful fallback.
+- Added normalized settings, effective surface refresh, LRU caching, release metadata validation and a 27-test unit/integration suite.
+- Verified the production plugin in an isolated Obsidian 1.13.6 vault with no captured runtime errors.
+- Scoped away Obsidian MathJax 3 pseudo-glyphs inside MathJax 4 output, fixing detached square-root bars and other double-drawn symbols.
+- Prevented Live Preview's DOM observer and unload refresh from recursively starving Reading View's virtual renderer; repeated view switching now keeps the full note visible.
+- Made Reading View source pairing fail closed when wrapper counts disagree with conservative TeX recovery.
+
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 

@@ -1,217 +1,217 @@
-import { syntaxTree } from "@codemirror/language";
-import {
-    Decoration,
-    type DecorationSet,
-    EditorView,
-    ViewPlugin,
-    type ViewUpdate,
-    WidgetType,
-} from "@codemirror/view";
-import { Prec, StateEffect, type EditorState, type Extension, type Range } from "@codemirror/state";
-import type { MathJaxEngine } from "../engine/MathJaxEngine";
+import { type Extension } from "@codemirror/state";
+import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type LatestMathJaxPlugin from "../main";
+import { createFallbackElement } from "../render/fallback";
+import { findMathRanges, type RecoveredMathRange } from "../utils/mathSource";
 import { logger } from "../utils/logger";
 
+const HANDLED_ATTR = "data-latest-mathjax-live-preview";
+const SOURCE_ATTR = "data-latest-mathjax-source";
+const DISPLAY_ATTR = "data-latest-mathjax-display";
+
+function isElement(node: Node): node is Element {
+    return node.nodeType === 1;
+}
+
 /**
- * Live Preview (CodeMirror 6) adapter.
+ * Live Preview adapter that cooperates with Obsidian's editor widgets.
  *
- * Obsidian renders math in Live Preview through its own `Decoration.replace` + `WidgetType`. We take
- * over the same ranges with a higher-precedence decoration (`Prec.highest`) so our widget wins and
- * Obsidian's math widget for that range is displaced. The original TeX is read straight from the
- * editor state's syntax tree + `sliceDoc`, never reverse-engineered from a rendered DOM node.
- *
- * Cursor interaction follows the plan's requirement: when the selection overlaps a math range we
- * skip the decoration entirely, so Obsidian falls back to showing the raw `$$…$$` / `$…$` source
- * (standard Live Preview "show source while editing" behaviour).
- *
- * @risk This relies on `Prec.highest` outranking Obsidian's built-in math decoration, and on the
- * math token names following the underscore-joined token convention documented in
- * docs/obsidian-mathjax-research.md §4. Both need in-app confirmation (open question in that doc).
+ * Obsidian remains responsible for locating formulas, virtual scrolling, and showing source while
+ * the cursor edits a formula. Once one of its `.math` widgets is mounted, this adapter resolves the
+ * widget's document position to TeX from our conservative Markdown scanner and replaces only the
+ * widget contents. This avoids depending on private syntax-token names or competing decoration
+ * precedence while still never reverse-engineering TeX from rendered HTML.
  */
-
-const HANDLED_TOKEN = "math";
-
-function isMathToken(nodeName: string): boolean {
-    return nodeName.split("_").includes(HANDLED_TOKEN);
-}
-
-function isBlockToken(nodeName: string): boolean {
-    return nodeName.split("_").includes("math-block");
-}
-
-/** A widget that renders a single math expression with our bundled MathJax 4 engine. */
-class MathWidget extends WidgetType {
-    constructor(
-        private readonly tex: string,
-        private readonly display: boolean,
-        private readonly engine: MathJaxEngine,
-        private readonly showSourceOnError: boolean,
-    ) {
-        super();
-    }
-
-    eq(other: MathWidget): boolean {
-        return (
-            other.tex === this.tex &&
-            other.display === this.display &&
-            other.showSourceOnError === this.showSourceOnError
-        );
-    }
-
-    toDOM(): HTMLElement {
-        try {
-            const node = this.engine.render(this.tex, { display: this.display });
-            this.engine.ensureStyles(node.ownerDocument);
-            return node;
-        } catch (err) {
-            logger.warn("Live Preview: render failed, falling back to source:", err);
-            // Graceful fallback: show the raw source so the note never breaks.
-            const span = document.createElement(this.display ? "div" : "span");
-            span.className = "mathjax-live-preview-error";
-            span.textContent = this.display ? `$$${this.tex}$$` : `$${this.tex}$`;
-            return span;
-        }
-    }
-
-    ignoreEvent(): boolean {
-        // Allow text selection inside the rendered math but no editing.
-        return false;
-    }
-}
-
-function buildDecorations(
-    state: EditorState,
-    engine: MathJaxEngine,
-    enabled: boolean,
-    handleInline: boolean,
-    showSourceOnError: boolean,
-): DecorationSet {
-    if (!enabled) return Decoration.none;
-    const widgets: Range<Decoration>[] = [];
-    const selection = state.selection;
-
-    // Whether a range overlaps the current selection — if so we must NOT replace it, so the user
-    // sees the raw source while the cursor is inside the formula.
-    const overlapsSelection = (from: number, to: number): boolean => {
-        for (const range of selection.ranges) {
-            if (range.from <= to && range.to >= from) return true;
-        }
-        return false;
-    };
-
-    syntaxTree(state).iterate({
-        enter: (node) => {
-            const name = node.name;
-            if (!isMathToken(name)) return;
-            if (!isBlockToken(name) && !handleInline) return; // inline disabled
-
-            const from = node.from;
-            const to = node.to;
-            if (from === to) return;
-
-            // Skip ranges the cursor is currently inside.
-            if (overlapsSelection(from, to)) return;
-
-            const display = isBlockToken(name);
-            const raw = state.sliceDoc(from, to);
-            const tex = stripDelimiters(raw, display);
-            if (tex.length === 0) return;
-
-            const widget = new MathWidget(tex, display, engine, showSourceOnError);
-            widgets.push(Decoration.replace({ widget }).range(from, to));
-        },
-    });
-
-    return Decoration.set(widgets, true);
-}
-
-/** Removes the outermost `$…$` or `$$…$$` delimiters and trims whitespace. */
-function stripDelimiters(raw: string, display: boolean): string {
-    let s = raw.trim();
-    if (display) {
-        if (s.startsWith("$$")) s = s.slice(2);
-        if (s.endsWith("$$")) s = s.slice(0, -2);
-    } else {
-        if (s.startsWith("$")) s = s.slice(1);
-        if (s.endsWith("$")) s = s.slice(0, -1);
-    }
-    return s.trim();
-}
-
-/** Forces a synchronous decoration rebuild when dispatched (used by the debounce timer). */
-const rebuildEffect = StateEffect.define<null>();
-
 export class LivePreviewRenderer {
-    constructor(private plugin: LatestMathJaxPlugin) {}
+    constructor(private readonly plugin: LatestMathJaxPlugin) {}
 
     getExtension(): Extension {
         const plugin = this.plugin;
-        return Prec.highest(
-            ViewPlugin.fromClass(
-                class {
-                    decorations: DecorationSet;
-                    private timer: number | null = null;
 
-                    constructor(view: EditorView) {
-                        this.decorations = buildDecorations(
-                            view.state,
-                            plugin.engine,
-                            plugin.settings.enableLivePreview,
-                            plugin.settings.enableInlineLivePreview,
-                            true,
-                        );
-                    }
+        return ViewPlugin.fromClass(
+            class {
+                private timer: number | null = null;
+                private animationFrame: number | null = null;
+                private lastRevision = -1;
+                private readonly observer: MutationObserver;
 
-                    update(update: ViewUpdate): void {
-                        const forced = update.transactions.some((tr) =>
-                            tr.effects.some((e) => e.is(rebuildEffect)),
+                constructor(private readonly view: EditorView) {
+                    const Observer = view.dom.ownerDocument.defaultView?.MutationObserver
+                        ?? MutationObserver;
+                    this.observer = new Observer((records) => {
+                        if (this.hasNewObsidianMath(records)) this.schedule(0);
+                    });
+                    this.observer.observe(view.dom, { childList: true, subtree: true });
+                    this.schedule(0);
+                }
+
+                /** Ignores mutations caused by our own replacement nodes. */
+                private hasNewObsidianMath(records: MutationRecord[]): boolean {
+                    const needsHandling = (wrapper: Element): boolean =>
+                        !wrapper.hasAttribute(HANDLED_ATTR) &&
+                        !wrapper.querySelector(
+                            `[data-latest-mathjax-engine="${plugin.engine.version}"]`,
                         );
-                        if (forced) {
-                            this.decorations = buildDecorations(
-                                update.state,
-                                plugin.engine,
-                                plugin.settings.enableLivePreview,
-                                plugin.settings.enableInlineLivePreview,
-                                true,
-                            );
-                            return;
+
+                    for (const record of records) {
+                        if (isElement(record.target)) {
+                            const wrapper = record.target.matches(".math")
+                                ? record.target
+                                : record.target.closest(".math");
+                            if (wrapper && needsHandling(wrapper)) return true;
                         }
-
-                        if (
-                            update.docChanged ||
-                            update.selectionSet ||
-                            update.viewportChanged
-                        ) {
-                            const delay = plugin.settings.renderDebounce;
-                            if (this.timer !== null) window.clearTimeout(this.timer);
-                            if (delay <= 0) {
-                                this.decorations = buildDecorations(
-                                    update.state,
-                                    plugin.engine,
-                                    plugin.settings.enableLivePreview,
-                                    plugin.settings.enableInlineLivePreview,
-                                    true,
-                                );
-                            } else {
-                                // Defer the rebuild so rapid typing (e.g. editing a long formula)
-                                // does not re-render on every keystroke. A forced rebuild is
-                                // dispatched once the user pauses.
-                                this.timer = window.setTimeout(() => {
-                                    this.timer = null;
-                                    update.view.dispatch({ effects: rebuildEffect.of(null) });
-                                }, delay);
+                        for (const added of Array.from(record.addedNodes)) {
+                            if (!isElement(added)) continue;
+                            if (added.matches(".math") && needsHandling(added)) return true;
+                            for (const wrapper of Array.from(added.querySelectorAll(".math"))) {
+                                if (needsHandling(wrapper)) return true;
                             }
                         }
                     }
+                    return false;
+                }
 
-                    destroy(): void {
-                        if (this.timer !== null) window.clearTimeout(this.timer);
+                update(update: ViewUpdate): void {
+                    if (
+                        update.docChanged ||
+                        update.selectionSet ||
+                        update.viewportChanged ||
+                        this.lastRevision !== plugin.engine.revision
+                    ) this.schedule(update.docChanged ? plugin.settings.renderDebounce : 0);
+                }
+
+                private schedule(delay: number): void {
+                    if (this.timer !== null) window.clearTimeout(this.timer);
+                    if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
+                    this.timer = window.setTimeout(() => {
+                        this.timer = null;
+                        // Obsidian mounts its math widgets during the view update. Run after the next
+                        // layout frame so the wrappers exist before we query them.
+                        this.animationFrame = window.requestAnimationFrame(() => {
+                            this.animationFrame = null;
+                            this.renderMountedMath();
+                        });
+                    }, Math.max(0, delay));
+                }
+
+                private renderMountedMath(): void {
+                    const targetDocument = this.view.dom.ownerDocument;
+                    if (
+                        !plugin.settings.enableLivePreview ||
+                        !plugin.compatibility.canRender(targetDocument, plugin.settings.enablePopout)
+                    ) return;
+
+                    const ranges = findMathRanges(this.view.state.doc.toString());
+                    const revision = plugin.engine.revision;
+                    this.lastRevision = revision;
+
+                    for (const wrapper of Array.from(
+                        this.view.dom.querySelectorAll<HTMLElement>(".math"),
+                    )) {
+                        if (
+                            wrapper.getAttribute(HANDLED_ATTR) === String(revision) ||
+                            wrapper.querySelector(
+                                `[data-latest-mathjax-engine="${plugin.engine.version}"]`,
+                            )
+                        ) continue;
+                        const source = this.sourceForWrapper(wrapper, ranges);
+                        if (!source || (!source.display && !plugin.settings.enableInlineLivePreview)) {
+                            continue;
+                        }
+
+                        try {
+                            const rendered = plugin.engine.renderInto(
+                                source.tex,
+                                { display: source.display },
+                                targetDocument,
+                            );
+                            // Keep our own source on the child: Obsidian can recreate the wrapper
+                            // and drop wrapper attributes while preserving its rendered contents.
+                            rendered.setAttribute(SOURCE_ATTR, source.tex);
+                            rendered.setAttribute(DISPLAY_ATTR, String(source.display));
+                            wrapper.replaceChildren(rendered);
+                            wrapper.setAttribute(HANDLED_ATTR, String(revision));
+                        } catch (error) {
+                            if (plugin.settings.fallbackMode !== "obsidian") {
+                                wrapper.replaceChildren(
+                                    createFallbackElement(
+                                        targetDocument,
+                                        plugin.settings.fallbackMode,
+                                        source.tex,
+                                        source.display,
+                                        error,
+                                    ),
+                                );
+                                wrapper.setAttribute(HANDLED_ATTR, String(revision));
+                            }
+                            logger.warn("Live Preview: bundled render failed, keeping fallback:", error);
+                        }
                     }
-                },
-                {
-                    decorations: (v) => v.decorations,
-                },
-            ),
+                }
+
+                private sourceForWrapper(
+                    wrapper: HTMLElement,
+                    ranges: RecoveredMathRange[],
+                ): RecoveredMathRange | undefined {
+                    let position: number;
+                    try {
+                        position = this.view.posAtDOM(wrapper);
+                    } catch {
+                        return undefined;
+                    }
+                    const display = wrapper.classList.contains("math-block");
+                    return ranges.find(
+                        (range) =>
+                            range.display === display &&
+                            position >= range.from &&
+                            position <= range.to,
+                    ) ?? ranges.find(
+                        (range) => range.display === display && Math.abs(range.from - position) <= 2,
+                    );
+                }
+
+                destroy(): void {
+                    this.observer.disconnect();
+                    if (this.timer !== null) window.clearTimeout(this.timer);
+                    if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
+
+                    const ranges = findMathRanges(this.view.state.doc.toString());
+                    const wrappers = new Set<HTMLElement>(Array.from(
+                        this.view.dom.querySelectorAll<HTMLElement>(`[${HANDLED_ATTR}]`),
+                    ));
+                    for (const rendered of Array.from(
+                        this.view.dom.querySelectorAll<HTMLElement>("[data-latest-mathjax-engine]"),
+                    )) {
+                        const wrapper = rendered.closest<HTMLElement>(".math");
+                        if (wrapper) wrappers.add(wrapper);
+                    }
+                    for (const wrapper of wrappers) {
+                        const rendered = wrapper.querySelector<HTMLElement>(
+                            "[data-latest-mathjax-engine]",
+                        );
+                        const mapped = this.sourceForWrapper(wrapper, ranges);
+                        const source = mapped ?? (rendered ? {
+                            // Our MathJax output retains the root TeX in data-latex even if
+                            // Obsidian recreates the wrapper and strips our auxiliary attributes.
+                            tex: rendered.getAttribute(SOURCE_ATTR)
+                                ?? rendered.querySelector("mjx-math")?.getAttribute("data-latex")
+                                ?? "",
+                            display: rendered.hasAttribute(DISPLAY_ATTR)
+                                ? rendered.getAttribute(DISPLAY_ATTR) === "true"
+                                : wrapper.classList.contains("math-block"),
+                            from: 0,
+                            to: 0,
+                        } : undefined);
+                        wrapper.removeAttribute(HANDLED_ATTR);
+                        if (!source?.tex) continue;
+                        void plugin.renderWithBuiltIn(source.tex, source.display).then((rendered) => {
+                            if (wrapper.isConnected) wrapper.replaceChildren(rendered);
+                        }).catch((error) => {
+                            logger.warn("Live Preview: failed to restore Obsidian output:", error);
+                        });
+                    }
+                }
+            },
         );
     }
 }

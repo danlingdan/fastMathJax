@@ -1,5 +1,6 @@
 import {
     Notice,
+    MarkdownView,
     Plugin,
     WorkspaceLeaf,
     finishRenderMath,
@@ -11,6 +12,7 @@ import { MathJaxEngine } from "./engine/MathJaxEngine";
 import {
     DEFAULT_SETTINGS,
     LatestMathJaxSettingTab,
+    normalizeSettings,
     type LatestMathJaxSettings,
     toEngineConfig,
 } from "./settings";
@@ -35,7 +37,7 @@ export default class LatestMathJaxPlugin extends Plugin {
             toEngineConfig(this.settings),
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
-        this.compatibility = new CompatibilityManager(this.engine);
+        this.compatibility = new CompatibilityManager(document);
 
         // Building the engine is a few milliseconds of work, but it also injects a stylesheet.
         // Deferring to layout-ready keeps startup clean and avoids touching a half-built workspace.
@@ -82,17 +84,15 @@ export default class LatestMathJaxPlugin extends Plugin {
         // safely re-render, so enabling it can never break a user's notes.
         this.registerMarkdownPostProcessor(createReadingViewProcessor(this));
 
-        // Live Preview: take over math in the editor via a CodeMirror 6 decoration. Registered once;
-        // the extension reads the toggles from settings on every rebuild, and the settings tab forces
-        // a workspace refresh when they change.
+        // Live Preview: cooperate with Obsidian's public editor widgets, replacing only their
+        // rendered contents. Registered once; settings are read on every scheduled refresh.
         this.registerEditorExtension(new LivePreviewRenderer(this).getExtension());
 
         logger.debug(`plugin loaded, bundled MathJax ${this.engine.version}`);
     }
 
     onunload(): void {
-        // Views are closed by Obsidian; the engine owns the injected stylesheet and must clean it up
-        // so that disabling the plugin leaves no trace.
+        // The engine owns the injected stylesheet and must clean it up immediately.
         this.engine?.dispose();
         logger.debug("plugin unloaded");
     }
@@ -101,7 +101,7 @@ export default class LatestMathJaxPlugin extends Plugin {
 
     async loadSettings(): Promise<void> {
         const stored = (await this.loadData()) as Partial<LatestMathJaxSettings> | null;
-        this.settings = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+        this.settings = normalizeSettings(stored);
     }
 
     async saveSettings(): Promise<void> {
@@ -112,6 +112,18 @@ export default class LatestMathJaxPlugin extends Plugin {
         );
         const rebuilt = this.engine.updateConfig(toEngineConfig(this.settings));
         if (rebuilt) logger.debug("engine reconfigured");
+    }
+
+    /** Rebuilds both editor decorations and rendered Markdown after a relevant setting changes. */
+    refreshRenderedSurfaces(): void {
+        document
+            .querySelectorAll("[data-latest-mathjax]")
+            .forEach((node) => node.removeAttribute("data-latest-mathjax"));
+
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            if (leaf.view instanceof MarkdownView) leaf.view.previewMode.rerender(true);
+        });
+        this.app.workspace.updateOptions();
     }
 
     // ----------------------------------------------------------------- version

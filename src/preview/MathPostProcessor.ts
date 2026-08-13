@@ -1,7 +1,8 @@
 import type { MarkdownPostProcessorContext } from "obsidian";
 import type LatestMathJaxPlugin from "../main";
-import { findMathInSection } from "../utils/mathSource";
+import { findMathInSection, textForSection } from "../utils/mathSource";
 import { logger } from "../utils/logger";
+import { createFallbackElement } from "../render/fallback";
 
 /** Marks a node we have already re-rendered so a second post-processor pass skips it. */
 const HANDLED_ATTR = "data-latest-mathjax";
@@ -27,6 +28,12 @@ export function createReadingViewProcessor(
 ): (element: HTMLElement, context: MarkdownPostProcessorContext) => Promise<void> {
     return async (element: HTMLElement, context: MarkdownPostProcessorContext) => {
         if (!plugin.settings.enableReadingView) return;
+        if (
+            !plugin.compatibility.canRender(
+                element.ownerDocument,
+                plugin.settings.enablePopout,
+            )
+        ) return;
 
         const handleInline = plugin.settings.enableInlineReadingView;
 
@@ -42,7 +49,9 @@ export function createReadingViewProcessor(
 
         // Recover the TeX in document order, then split by kind so an inline formula can never
         // shift a block's index (and vice versa).
-        const sources = findMathInSection(section.text);
+        const sources = findMathInSection(
+            textForSection(section.text, section.lineStart, section.lineEnd),
+        );
         const blockTex = sources.filter((s) => s.display);
         const inlineTex = sources.filter((s) => !s.display);
 
@@ -64,6 +73,16 @@ async function rerender(
     texList: { tex: string }[],
     display: boolean,
 ): Promise<void> {
+    // A mismatch means Obsidian and our conservative scanner disagree (currency-like dollars are
+    // the common case). Index pairing would move later TeX into the wrong wrapper, so fail closed.
+    if (nodes.length !== texList.length) {
+        logger.debug(
+            `Reading View: ${display ? "block" : "inline"} count mismatch ` +
+            `(${nodes.length} wrappers, ${texList.length} sources), leaving built-in output`,
+        );
+        return;
+    }
+
     for (let i = 0; i < nodes.length; i++) {
         const tex = texList[i]?.tex;
         if (tex === undefined) {
@@ -72,13 +91,23 @@ async function rerender(
         }
         const wrapper = nodes[i];
         try {
-            const node = plugin.engine.render(tex, { display });
-            plugin.engine.ensureStyles(wrapper.ownerDocument);
+            const node = plugin.engine.renderInto(tex, { display }, wrapper.ownerDocument);
             wrapper.setAttribute(HANDLED_ATTR, "true");
             wrapper.replaceChildren(node);
             logger.debug(`Reading View: re-rendered ${display ? "block" : "inline"} #${i}`);
         } catch (err) {
-            // Engine threw (MathRenderError): keep Obsidian's already-rendered output.
+            if (plugin.settings.fallbackMode !== "obsidian") {
+                wrapper.setAttribute(HANDLED_ATTR, "true");
+                wrapper.replaceChildren(
+                    createFallbackElement(
+                        wrapper.ownerDocument,
+                        plugin.settings.fallbackMode,
+                        tex,
+                        display,
+                        err,
+                    ),
+                );
+            }
             logger.warn(
                 `Reading View: render failed for ${display ? "block" : "inline"} #${i}, keeping built-in output:`,
                 err,

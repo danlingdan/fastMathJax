@@ -1,103 +1,158 @@
 /**
- * Recovers original TeX from raw markdown.
+ * Conservative Markdown math recovery for Reading View.
  *
- * Obsidian renders math *before* post processors run and keeps no copy of the source LaTeX in the
- * DOM (see docs/obsidian-mathjax-research.md §3). The reliable recovery path is to re-parse the
- * section's raw markdown, which `MarkdownPostProcessorContext.getSectionInfo` hands us.
- *
- * This module is deliberately Obsidian-agnostic: pure text → TeX. It is reused by the Reading View
- * adapter (Stage 3) and will be reused by Live Preview (Stage 4).
+ * Obsidian's rendered math wrappers do not retain their TeX source, so the post processor pairs
+ * them with expressions recovered from the raw section. False positives are more dangerous than
+ * false negatives here: one false match shifts every later DOM/source pair. The scanner therefore
+ * ignores fenced and inline code and follows the usual dollar-delimiter whitespace rules.
  */
-
-/** Drops fenced code blocks so a `$$` *inside* code is never mistaken for display math. */
-function stripFencedCode(text: string): string {
-    return text
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/~~~\s*(?:\w+)?[\s\S]*?~~~/g, "");
-}
-
-/**
- * Finds every `$$ ... $$` block in a markdown section, in document order.
- * Returns the trimmed inner TeX with the delimiters stripped.
- */
-export function extractDisplayMath(text: string): string[] {
-    const clean = stripFencedCode(text);
-    const out: string[] = [];
-    const re = /\$\$([\s\S]+?)\$\$/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(clean)) !== null) {
-        out.push(m[1].trim());
-    }
-    return out;
-}
 
 export interface RecoveredMath {
-    /** Inner TeX with delimiters stripped. */
     tex: string;
-    /** `true` for `$$…$$` display math, `false` for `$…$` inline math. */
     display: boolean;
 }
 
-/**
- * Recovers every math expression in a section, block and inline mixed, in strict document order.
- *
- * Used to pair each `.math-*` DOM node (which Obsidian renders without a copy of its source) back to
- * the TeX that produced it. The scan is deliberately conservative:
- *   - fenced code blocks are removed first (code containing `$$` must not match);
- *   - an escaped `\$` is skipped, so currency like `$5 and $6` never triggers;
- *   - `$$…$$` is matched greedily-paired and takes priority over inline at the same position;
- *   - a lone `$` with no closing partner is ignored (avoids stray-currency false positives).
- */
-export function findMathInSection(text: string): RecoveredMath[] {
-    const src = stripFencedCode(text);
-    const out: RecoveredMath[] = [];
-    let i = 0;
-    const n = src.length;
+export interface RecoveredMathRange extends RecoveredMath {
+    from: number;
+    to: number;
+}
 
-    while (i < n) {
-        const ch = src[i];
+function isEscaped(text: string, index: number): boolean {
+    let slashes = 0;
+    for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) slashes++;
+    return slashes % 2 === 1;
+}
 
-        // Escaped dollar: skip the backslash and the dollar.
-        if (ch === "\\" && src[i + 1] === "$") {
+function repeatLength(text: string, start: number, char: string): number {
+    let end = start;
+    while (text[end] === char) end++;
+    return end - start;
+}
+
+/** Marks Markdown code regions while preserving all original offsets. */
+function ignoredCodeRanges(text: string): Uint8Array {
+    const ignored = new Uint8Array(text.length);
+    let fence: { char: "`" | "~"; length: number } | null = null;
+    let lineStart = 0;
+
+    while (lineStart < text.length) {
+        const newline = text.indexOf("\n", lineStart);
+        const lineEnd = newline === -1 ? text.length : newline + 1;
+        const line = text.slice(lineStart, lineEnd);
+        const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+
+        if (fence) {
+            ignored.fill(1, lineStart, lineEnd);
+            if (
+                marker &&
+                marker[0] === fence.char &&
+                marker.length >= fence.length
+            ) fence = null;
+        } else if (marker) {
+            fence = { char: marker[0] as "`" | "~", length: marker.length };
+            ignored.fill(1, lineStart, lineEnd);
+        }
+        lineStart = lineEnd;
+    }
+
+    // Inline code spans use equal-length backtick runs. Unclosed runs are plain text.
+    for (let i = 0; i < text.length; i++) {
+        if (ignored[i] || text[i] !== "`") continue;
+        const length = repeatLength(text, i, "`");
+        const delimiter = "`".repeat(length);
+        const close = text.indexOf(delimiter, i + length);
+        if (close !== -1 && !ignored[close]) {
+            ignored.fill(1, i, close + length);
+            i = close + length - 1;
+        } else {
+            i += length - 1;
+        }
+    }
+    return ignored;
+}
+
+function findDelimiter(
+    text: string,
+    ignored: Uint8Array,
+    delimiter: "$" | "$$",
+    start: number,
+): number {
+    for (let i = start; i <= text.length - delimiter.length; i++) {
+        if (ignored[i] || isEscaped(text, i)) continue;
+        if (text.startsWith(delimiter, i)) return i;
+    }
+    return -1;
+}
+
+function validInlineOpening(text: string, index: number): boolean {
+    const next = text[index + 1];
+    return next !== undefined && next !== "$" && !/\s/u.test(next);
+}
+
+function validInlineClosing(text: string, index: number): boolean {
+    const previous = text[index - 1];
+    const next = text[index + 1];
+    return previous !== undefined && !/\s/u.test(previous) && !(next && /\d/u.test(next));
+}
+
+export function findMathRanges(text: string): RecoveredMathRange[] {
+    const ignored = ignoredCodeRanges(text);
+    const recovered: RecoveredMathRange[] = [];
+
+    for (let i = 0; i < text.length;) {
+        if (ignored[i] || text[i] !== "$" || isEscaped(text, i)) {
+            i++;
+            continue;
+        }
+
+        if (text[i + 1] === "$" && !ignored[i + 1]) {
+            const close = findDelimiter(text, ignored, "$$", i + 2);
+            if (close !== -1) {
+                const tex = text.slice(i + 2, close).trim();
+                if (tex) recovered.push({ tex, display: true, from: i, to: close + 2 });
+                i = close + 2;
+                continue;
+            }
             i += 2;
             continue;
         }
 
-        if (ch === "$") {
-            // Display math: $$ ... $$
-            if (src[i + 1] === "$") {
-                const close = src.indexOf("$$", i + 2);
-                if (close === -1) break; // unterminated display; stop scanning
-                const tex = src.slice(i + 2, close).trim();
-                if (tex.length > 0) out.push({ tex, display: true });
-                i = close + 2;
-                continue;
-            }
-
-            // Inline math: $ ... $ (next non-escaped dollar)
-            let j = i + 1;
-            let closed = -1;
-            while (j < n) {
-                if (src[j] === "\\" && src[j + 1] === "$") {
-                    j += 2;
-                    continue;
-                }
-                if (src[j] === "$") {
-                    closed = j;
-                    break;
-                }
-                j++;
-            }
-            if (closed === -1) break; // unterminated inline; stop scanning
-            const tex = src.slice(i + 1, closed).trim();
-            // Require non-empty content; a stray pairing of two adjacent dollars means no math.
-            if (tex.length > 0) out.push({ tex, display: false });
-            i = closed + 1;
+        if (!validInlineOpening(text, i)) {
+            i++;
             continue;
         }
 
+        // The next dollar is the only possible closing delimiter. If it is invalid, treat this
+        // opener as literal text; searching farther would swallow currency and later real math.
+        const close = findDelimiter(text, ignored, "$", i + 1);
+        if (close !== -1 && validInlineClosing(text, close)) {
+            const tex = text.slice(i + 1, close).trim();
+            if (tex && !tex.includes("\n")) {
+                recovered.push({ tex, display: false, from: i, to: close + 1 });
+            }
+            i = close + 1;
+            continue;
+        }
         i++;
     }
 
-    return out;
+    return recovered;
+}
+
+export function findMathInSection(text: string): RecoveredMath[] {
+    return findMathRanges(text).map(({ tex, display }) => ({ tex, display }));
+}
+
+/** Extracts the line range identified by Obsidian's section metadata. */
+export function textForSection(text: string, lineStart: number, lineEnd: number): string {
+    if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 0 || lineEnd < lineStart) {
+        return text;
+    }
+    return text.split("\n").slice(lineStart, lineEnd + 1).join("\n");
+}
+
+export function extractDisplayMath(text: string): string[] {
+    return findMathInSection(text)
+        .filter((entry) => entry.display)
+        .map((entry) => entry.tex);
 }

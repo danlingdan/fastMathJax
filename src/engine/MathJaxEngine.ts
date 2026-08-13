@@ -5,6 +5,8 @@ import { SVG } from "@mathjax/src/js/output/svg.js";
 import { RegisterHTMLHandler } from "@mathjax/src/js/handlers/html.js";
 import { browserAdaptor } from "@mathjax/src/js/adaptors/browserAdaptor.js";
 import { MathJaxNewcmFont } from "@mathjax/mathjax-newcm-font/js/chtml.js";
+import { MathJaxNewcmFont as MathJaxNewcmSvgFont } from "@mathjax/mathjax-newcm-font/js/svg.js";
+import { AssistiveMmlHandler } from "@mathjax/src/js/a11y/assistive-mml.js";
 import type { MathDocument } from "@mathjax/src/js/core/MathDocument.js";
 
 import { MathCache, type CacheStats } from "./MathCache";
@@ -17,6 +19,7 @@ import {
 import { resolvePackages } from "./packages";
 import { renderCacheKey } from "../utils/hash";
 import { logger } from "../utils/logger";
+import { configureBundledFontLoading } from "./bundledFontChunks";
 
 export interface RenderOptions {
     display: boolean;
@@ -53,7 +56,9 @@ let handlerRegistered = false;
 
 function ensureHandler(): void {
     if (handlerRegistered) return;
-    RegisterHTMLHandler(browserAdaptor());
+    configureBundledFontLoading();
+    const handler = RegisterHTMLHandler(browserAdaptor());
+    AssistiveMmlHandler(handler);
     handlerRegistered = true;
     logger.debug(`HTML handler registered, MathJax ${mathjax.version}`);
 }
@@ -79,6 +84,7 @@ export class MathJaxEngine {
     private styleFlushHandle: number | null = null;
     private cache: MathCache;
     private renders = 0;
+    private configRevision = 0;
     private preambleError: string | null = null;
 
     constructor(
@@ -96,6 +102,11 @@ export class MathJaxEngine {
 
     get isInitialised(): boolean {
         return this.doc !== null;
+    }
+
+    /** Changes whenever output-affecting configuration changes. */
+    get revision(): number {
+        return this.configRevision;
     }
 
     /** Non-fatal problem found while evaluating the user's preamble, if any. */
@@ -125,6 +136,7 @@ export class MathJaxEngine {
         const outputJax =
             config.renderer === "svg"
                 ? new SVG<HTMLElement, Text, Document>({
+                      fontData: MathJaxNewcmSvgFont,
                       // SVG embeds glyph path data inline (DefaultFont), so it needs no external
                       // webfont. `fontCache: "local"` puts the shared glyph definitions inside each
                       // equation's <svg>; "global" would share one cache across the document.
@@ -149,14 +161,12 @@ export class MathJaxEngine {
             OutputJax: outputJax,
             // Our adapters drive rendering explicitly; MathJax must never scan the page itself.
             // Obsidian's DOM is not ours to walk.
-            enableEnrichment: config.enableAssistiveMml,
             enableAssistiveMml: config.enableAssistiveMml,
-            enableMenu: false,
-            enableExplorer: false,
         }) as MathDocument<HTMLElement, Text, Document>;
 
         this.outputJax = outputJax;
         this.hash = configHash(config);
+        this.configRevision++;
         this.cache.clear();
         this.renders = 0;
         this.preambleError = null;
@@ -223,6 +233,7 @@ export class MathJaxEngine {
                 display: options.display,
                 ...this.metrics(),
             }) as HTMLElement;
+            node.setAttribute("data-latest-mathjax-engine", mathjax.version);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -233,6 +244,17 @@ export class MathJaxEngine {
             logger.debug(`render error for "${tex.slice(0, 60)}": ${message}`);
             throw new MathRenderError(message, tex, options.display, err);
         }
+    }
+
+    /**
+     * Renders and moves the result into the document that will display it.
+     * MathJax creates nodes in the host document; popout windows need both an adopted node and a
+     * local copy of the generated stylesheet.
+     */
+    renderInto(tex: string, options: RenderOptions, targetDoc: Document): HTMLElement {
+        const node = this.render(tex, options);
+        this.ensureStyles(targetDoc);
+        return node.ownerDocument === targetDoc ? node : targetDoc.adoptNode(node);
     }
 
     /**
@@ -252,6 +274,7 @@ export class MathJaxEngine {
                 display: options.display,
                 ...this.metrics(),
             })) as HTMLElement;
+            node.setAttribute("data-latest-mathjax-engine", mathjax.version);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -283,6 +306,7 @@ export class MathJaxEngine {
         if (nextHash !== this.hash) {
             // Output-affecting but cheap: reconfigure in place and drop the cache.
             this.hash = nextHash;
+            this.configRevision++;
             if (this.outputJax) {
                 this.outputJax.options.scale = next.scale;
                 this.outputJax.font.setOptions({ fontURL: next.fontURL });
