@@ -1,6 +1,6 @@
 # Project status
 
-Latest MathJax `0.1.0` is feature-complete for its declared first-release scope and has been tested in a real Obsidian desktop runtime.
+Latest MathJax `0.1.1` is feature-complete for its declared first-release scope and has been tested in a real Obsidian desktop runtime. It is marked desktop-only until a separate mobile acceptance pass is completed.
 
 ## Completed
 

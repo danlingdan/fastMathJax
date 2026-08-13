@@ -1,10 +1,10 @@
 {
   "id": "latest-mathjax",
   "name": "Latest MathJax",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.8.0",
   "description": "Render math with a bundled, up-to-date MathJax 4 engine, without replacing Obsidian's built-in MathJax.",
   "author": "HuaJiaHao",
-  "authorUrl": "https://github.com/HuaJiaHao",
-  "isDesktopOnly": false
+  "authorUrl": "https://github.com/danlingdan",
+  "isDesktopOnly": true
 }

@@ -103,6 +103,24 @@ npm run check   # complete local release gate
 To test inside a vault, symlink or copy `main.js`, `manifest.json` and `styles.css` into
 `<vault>/.obsidian/plugins/latest-mathjax/`.
 
+## Releasing
+
+Releases are built by GitHub Actions; do not upload generated assets manually. Prepare and publish
+a version with a plain SemVer tag (Obsidian requires `0.1.2`, not `v0.1.2`):
+
+```bash
+npm version patch --no-git-tag-version
+npm run check
+git add package.json package-lock.json manifest.json versions.json CHANGELOG.md
+git commit -m "release: prepare 0.1.2"
+git push origin main
+git tag -a 0.1.2 -m "Latest MathJax 0.1.2"
+git push origin 0.1.2
+```
+
+The tag workflow verifies version consistency, installs from the lockfile, runs the complete check,
+and publishes `main.js`, `manifest.json`, `styles.css`, an installation ZIP and SHA256 checksums.
+
 ## Docs
 
 - [`docs/STATUS.md`](docs/STATUS.md) — **what's done** (task/stage progress, verification, risks)

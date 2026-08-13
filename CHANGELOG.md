@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 - 2026-08-13
+
+- Added GitHub Actions CI and tag-driven release automation with tests, production build, ZIP packaging and SHA256 assets.
+- Corrected the GitHub author URL and marked the plugin desktop-only until mobile acceptance testing is completed.
+- Switched official release tags to the Obsidian-required plain `x.y.z` format.
+
 ## 0.1.0 - 2026-08-13
 
 - Refactored the renderer into an isolated, revisioned MathJax 4.1.3 engine with complete New Computer Modern CommonHTML/SVG glyph chunks.

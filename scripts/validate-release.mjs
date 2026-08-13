@@ -12,6 +12,11 @@ const errors = [];
 if (pkg.version !== manifest.version) {
     errors.push(`package.json ${pkg.version} != manifest.json ${manifest.version}`);
 }
+if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== manifest.version) {
+    errors.push(
+        `release tag ${process.env.RELEASE_TAG} != manifest version ${manifest.version}`,
+    );
+}
 if (versions[manifest.version] !== manifest.minAppVersion) {
     errors.push(
         `versions.json does not map ${manifest.version} to ${manifest.minAppVersion}`,
