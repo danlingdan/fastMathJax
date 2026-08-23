@@ -1,6 +1,6 @@
 # Future roadmap
 
-This roadmap starts from the released `0.1.3` baseline. It describes intended work, not shipped
+This roadmap starts from the released `0.1.4` baseline. It describes intended work, not shipped
 behavior. [`STATUS.md`](STATUS.md) remains the source of truth for completed features, and
 [`CHANGELOG.md`](../CHANGELOG.md) records published changes.
 
@@ -38,6 +38,9 @@ review findings without introducing a new configuration model.
 | REL-02 | P0 | Keep tag-driven GitHub Actions releases authoritative | S | A plain `x.y.z` tag builds and publishes only `main.js`, `manifest.json` and `styles.css`; provenance attestation succeeds |
 | REG-01 | P0 | Preserve Reading View during repeated view switching and plugin reload | S | ✅ Delivered in 0.1.3: original Obsidian formula DOM is restored synchronously before teardown |
 | REG-02 | P0 | Preserve correct radicals and extensible symbols | S | Regression fixtures cover roots, arrows, matrices and dynamic New Computer Modern glyph chunks |
+| REG-03 | P0 | Prevent stale Live Preview teardown from overwriting a newer render | S | ✅ Implemented for 0.1.4 with revision/DOM ownership checks and focused regression tests |
+| SET-01 | P1 | Adopt searchable settings on Obsidian 1.13+ without raising the minimum app version | M | ✅ Implemented for 0.1.4 with declarative definitions plus the 1.8–1.12 imperative fallback |
+| LOG-01 | P2 | Keep opt-in diagnostics out of the normal console log channel | S | ✅ Implemented for 0.1.4 with `console.debug` regression coverage |
 | DOC-01 | P1 | Keep README, status, compatibility and changelog synchronized | S | Version, defaults, supported surfaces and release instructions match source and release metadata |
 
 ## `0.2.0` — preamble workflow

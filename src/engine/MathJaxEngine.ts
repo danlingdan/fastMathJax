@@ -19,7 +19,10 @@ import {
 import { resolvePackages } from "./packages";
 import { renderCacheKey } from "../utils/hash";
 import { logger } from "../utils/logger";
-import { configureBundledFontLoading } from "./bundledFontChunks";
+import {
+    configureBundledFontLoading,
+    resetBundledFontState,
+} from "./bundledFontChunks";
 
 export interface RenderOptions {
     display: boolean;
@@ -124,6 +127,10 @@ export class MathJaxEngine {
         const config = this.config;
         const packages = resolvePackages(config.packages);
 
+        resetBundledFontState(
+            config.renderer === "svg" ? MathJaxNewcmSvgFont : MathJaxNewcmFont,
+        );
+
         const inputJax = new TeX<HTMLElement, Text, Document>({
             packages,
             // Surface parse failures to us instead of silently emitting a red <merror>. The adapter
@@ -155,6 +162,13 @@ export class MathJaxEngine {
                       // Only emit CSS for constructs actually used; keeps the injected stylesheet small.
                       adaptiveCSS: true,
                   });
+
+        // Dynamic file load markers live on MathJax's shared font class, while the glyph tables
+        // they populate live on each output-jax font instance.  Eagerly replay every statically
+        // bundled setup callback now, during this synchronous build, so a second engine (including
+        // an overlapping Obsidian hot-reload instance) cannot make this instance skip its setup and
+        // recurse forever in FontData.getChar().
+        outputJax.font.loadDynamicFilesSync();
 
         this.doc = mathjax.document(document, {
             InputJax: inputJax,

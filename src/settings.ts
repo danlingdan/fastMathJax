@@ -1,11 +1,21 @@
-import { App, Notice, PluginSettingTab, Setting, setIcon } from "obsidian";
+import {
+    App,
+    Notice,
+    PluginSettingTab,
+    Setting,
+    setIcon,
+    type SettingDefinition,
+    type SettingDefinitionItem,
+} from "obsidian";
 import type LatestMathJaxPlugin from "./main";
 import { TEX_PACKAGES } from "./engine/packages";
 import { DEFAULT_FONT_URL } from "./engine/MathJaxConfig";
 import {
+    normalizeSettings,
     type FallbackMode,
     type LatestMathJaxSettings,
 } from "./settingsModel";
+import { logger } from "./utils/logger";
 
 export { DEFAULT_SETTINGS, normalizeSettings, toEngineConfig } from "./settingsModel";
 export type { FallbackMode, LatestMathJaxSettings } from "./settingsModel";
@@ -16,6 +26,320 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         private plugin: LatestMathJaxPlugin,
     ) {
         super(app, plugin);
+    }
+
+    /**
+     * Obsidian 1.13+ uses these definitions for rendering and settings search. The imperative
+     * display() implementation below remains the compatibility path for Obsidian 1.8–1.12.
+     */
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        const packageKey = (id: string) => `package:${id}`;
+        return [
+            {
+                type: "group",
+                heading: "Engine",
+                items: [
+                    {
+                        name: "MathJax versions",
+                        aliases: ["bundled version", "built-in version"],
+                        render: (setting) => this.renderVersionInfo(setting.settingEl),
+                    },
+                    {
+                        name: "Renderer",
+                        desc: "CommonHTML uses webfonts; SVG embeds glyph paths (no font download needed).",
+                        control: {
+                            type: "dropdown",
+                            key: "renderer",
+                            options: { chtml: "CommonHTML", svg: "SVG" },
+                        },
+                    },
+                    {
+                        name: "Scale",
+                        desc: "Multiplier applied to rendered math. 1.0 matches the surrounding text size.",
+                        control: { type: "slider", key: "scale", min: 0.5, max: 2, step: 0.05 },
+                    },
+                    {
+                        name: "Font file location",
+                        desc: "Where CommonHTML fetches MathJax 4 woff2 files. Ignored for SVG output.",
+                        control: {
+                            type: "text",
+                            key: "fontURL",
+                            placeholder: DEFAULT_FONT_URL,
+                            disabled: () => this.plugin.settings.renderer === "svg",
+                        },
+                    },
+                    {
+                        name: "Reset font file location",
+                        desc: "Restore the bundled CommonHTML font CDN default.",
+                        visible: () => this.plugin.settings.fontURL !== DEFAULT_FONT_URL,
+                        action: () => {
+                            void this.setControlValue("fontURL", DEFAULT_FONT_URL).then(() => {
+                                this.update();
+                            }).catch(() => undefined);
+                        },
+                    },
+                ],
+            },
+            {
+                type: "group",
+                heading: "TeX packages",
+                items: TEX_PACKAGES.map((pkg) => ({
+                    name: pkg.label,
+                    desc: pkg.required ? `${pkg.description} (always on)` : pkg.description,
+                    control: {
+                        type: "toggle" as const,
+                        key: packageKey(pkg.id),
+                        disabled: pkg.required === true,
+                    },
+                })),
+            },
+            {
+                type: "group",
+                heading: "Macros",
+                items: [{
+                    name: "Global preamble",
+                    desc: "LaTeX evaluated once when the engine starts. Applied when the field loses focus.",
+                    aliases: ["macros", "newcommand"],
+                    render: (setting) => this.renderPreambleControl(setting),
+                }],
+            },
+            {
+                type: "group",
+                heading: "Performance",
+                items: [
+                    {
+                        name: "Formula cache",
+                        desc: "Reuse rendered output for identical formulas.",
+                        control: { type: "toggle", key: "cacheEnabled" },
+                    },
+                    {
+                        name: "Cache size",
+                        desc: "Maximum number of cached formulas.",
+                        control: {
+                            type: "number",
+                            key: "cacheSize",
+                            min: 0,
+                            max: 10_000,
+                            step: 1,
+                        },
+                    },
+                    {
+                        name: "Render debounce",
+                        desc: "Milliseconds to wait after typing stops before re-rendering in Live Preview.",
+                        control: {
+                            type: "slider",
+                            key: "renderDebounce",
+                            min: 0,
+                            max: 500,
+                            step: 10,
+                        },
+                    },
+                    {
+                        name: "Cache statistics",
+                        aliases: ["cache hits", "cache misses"],
+                        render: (setting) => this.renderCacheStatistics(setting),
+                    },
+                ],
+            },
+            {
+                type: "group",
+                heading: "Compatibility",
+                items: [
+                    {
+                        name: "Supported surfaces",
+                        aliases: ["Reading View", "Live Preview", "popout"],
+                        render: (setting) => this.renderCompatibilityNotice(setting.settingEl),
+                    },
+                    ...this.compatibilityDefinitions(),
+                    {
+                        name: "When rendering fails",
+                        desc: "What to show if the bundled engine cannot render a formula.",
+                        control: {
+                            type: "dropdown",
+                            key: "fallbackMode",
+                            options: {
+                                obsidian: "Fall back to Obsidian's MathJax (recommended)",
+                                raw: "Show the original LaTeX",
+                                error: "Show the error message",
+                            },
+                        },
+                    },
+                ],
+            },
+            {
+                type: "group",
+                heading: "Developer",
+                items: [
+                    {
+                        name: "Debug mode",
+                        desc: "Log engine initialisation, cache hits and render errors to the console.",
+                        control: { type: "toggle", key: "debugMode" },
+                    },
+                    {
+                        name: "Assistive MathML",
+                        desc: "Emit hidden MathML alongside visual output for screen readers.",
+                        control: { type: "toggle", key: "enableAssistiveMml" },
+                    },
+                ],
+            },
+        ];
+    }
+
+    getControlValue(key: string): unknown {
+        if (key.startsWith("package:")) {
+            return this.plugin.settings.packages.includes(key.slice("package:".length));
+        }
+        return this.plugin.settings[key as keyof LatestMathJaxSettings];
+    }
+
+    async setControlValue(key: string, value: unknown): Promise<void> {
+        const previous = this.plugin.settings;
+        try {
+            if (key.startsWith("package:")) {
+                const id = key.slice("package:".length);
+                const packages = new Set(previous.packages);
+                if (value === true) packages.add(id);
+                else packages.delete(id);
+                this.plugin.settings = normalizeSettings({ ...previous, packages: [...packages] });
+            } else {
+                this.plugin.settings = normalizeSettings({ ...previous, [key]: value });
+            }
+            await this.plugin.saveSettings();
+            if (this.settingAffectsRenderedSurfaces(key)) {
+                this.plugin.refreshRenderedSurfaces();
+            }
+            this.refreshDomState();
+        } catch (error) {
+            this.plugin.settings = previous;
+            logger.error(`failed to save setting ${key}:`, error);
+            new Notice("Latest MathJax: failed to save setting; the previous value was restored.");
+            throw error;
+        }
+    }
+
+    private compatibilityDefinitions(): SettingDefinition[] {
+        const surfaces: Array<[keyof LatestMathJaxSettings, string, string, boolean]> = [
+            ["enableReadingView", "Reading View", "Re-renders display math with the bundled engine.", true],
+            ["enableLivePreview", "Live Preview", "Takes over mounted math widgets in the editor.", true],
+            ["enablePopout", "Popout windows", "Allows supported adapters to render in detached windows.", true],
+            ["enableHoverPreview", "Hover Preview", "Not supported: raw TeX is not exposed reliably.", false],
+            ["enableCanvas", "Canvas", "Not supported: canvas cards bypass the Markdown post-processor.", false],
+        ];
+        return [
+            ...surfaces.map(([key, name, desc, available]) => ({
+                name,
+                desc,
+                control: {
+                    type: "toggle" as const,
+                    key,
+                    disabled: !available,
+                },
+            })),
+            {
+                name: "Inline math in Reading View",
+                desc: "Also re-render inline prose math in Reading View.",
+                control: {
+                    type: "toggle",
+                    key: "enableInlineReadingView",
+                    disabled: () => !this.plugin.settings.enableReadingView,
+                },
+            },
+            {
+                name: "Inline math in Live Preview",
+                desc: "Also re-render inline prose math in Live Preview.",
+                control: {
+                    type: "toggle",
+                    key: "enableInlineLivePreview",
+                    disabled: () => !this.plugin.settings.enableLivePreview,
+                },
+            },
+        ];
+    }
+
+    private settingAffectsRenderedSurfaces(key: string): boolean {
+        return key.startsWith("package:") || ![
+            "cacheEnabled",
+            "cacheSize",
+            "renderDebounce",
+            "debugMode",
+        ].includes(key);
+    }
+
+    private renderVersionInfo(root: HTMLElement): void {
+        const report = this.plugin.versionReport;
+        const info = root.createDiv({ cls: "latest-mathjax-version-info" });
+        const row = (label: string, value: string) => {
+            const line = info.createDiv({ cls: "latest-mathjax-version-row" });
+            line.createSpan({ text: label, cls: "latest-mathjax-version-label" });
+            line.createSpan({ text: value, cls: "latest-mathjax-version-value" });
+        };
+        row("Plugin MathJax", this.plugin.engine.version);
+        row("Built-in MathJax", report?.builtIn ?? "not detected yet");
+        if (report?.builtInIsNewer) {
+            const warn = info.createDiv({ cls: "latest-mathjax-warning" });
+            setIcon(warn.createSpan(), "alert-triangle");
+            warn.createSpan({
+                text: "Obsidian's built-in MathJax is newer than the bundled version.",
+            });
+        }
+    }
+
+    private renderPreambleControl(setting: Setting): void {
+        const wrapper = setting.controlEl.createDiv({ cls: "latest-mathjax-preamble" });
+        const textarea = wrapper.createEl("textarea", {
+            cls: "latest-mathjax-preamble-input",
+            attr: {
+                rows: "8",
+                spellcheck: "false",
+                placeholder: "\\newcommand{\\R}{\\mathbb{R}}",
+            },
+        });
+        textarea.value = this.plugin.settings.preamble;
+        const status = wrapper.createDiv({ cls: "latest-mathjax-preamble-status" });
+        const showStatus = () => {
+            const problem = this.plugin.engine.preambleProblem;
+            status.toggleClass("is-error", Boolean(problem));
+            status.setText(problem
+                ? `Preamble error: ${problem}`
+                : this.plugin.settings.preamble.trim() ? "Preamble applied." : "");
+        };
+        showStatus();
+        textarea.addEventListener("blur", () => {
+            if (textarea.value === this.plugin.settings.preamble) return;
+            const previous = this.plugin.settings;
+            this.plugin.settings = normalizeSettings({ ...previous, preamble: textarea.value });
+            void this.plugin.saveSettings().then(() => {
+                this.plugin.refreshRenderedSurfaces();
+                showStatus();
+            }).catch((error) => {
+                this.plugin.settings = previous;
+                logger.error("failed to save preamble:", error);
+                textarea.value = previous.preamble;
+                new Notice("Latest MathJax: failed to save preamble; the previous value was restored.");
+            });
+        });
+    }
+
+    private renderCacheStatistics(setting: Setting): void {
+        const stats = this.plugin.engine.stats;
+        setting.setDesc(
+            `${stats.cache.size} / ${stats.cache.maxSize} entries · ` +
+            `${stats.cache.hits} hits · ${stats.cache.misses} misses · ` +
+            `${(stats.cache.hitRate * 100).toFixed(0)}% hit rate · ` +
+            `${stats.renders} renders this session`,
+        ).addButton((button) => button.setButtonText("Clear cache").onClick(() => {
+            this.plugin.engine.clearCache();
+            this.update();
+        }));
+    }
+
+    private renderCompatibilityNotice(root: HTMLElement): void {
+        const notice = root.createDiv({ cls: "latest-mathjax-notice" });
+        setIcon(notice.createSpan(), "info");
+        notice.createSpan({
+            text: "Reading View, Live Preview and their popout-window variants are supported. " +
+                "Hover Preview and Canvas remain fail-closed and unsupported.",
+        });
     }
 
     display(): void {
@@ -282,13 +606,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             .setDesc("Which parts of Obsidian this plugin renders math in.")
             .setHeading();
 
-        const notice = root.createDiv({ cls: "latest-mathjax-notice" });
-        setIcon(notice.createSpan(), "info");
-        notice.createSpan({
-            text:
-                "Reading View and Live Preview use the bundled engine. The remaining surfaces " +
-                "(hover, canvas, popout) are planned for later releases.",
-        });
+        this.renderCompatibilityNotice(root);
 
         const surfaces: Array<[keyof LatestMathJaxSettings, string, string, boolean]> = [
             ["enableReadingView", "Reading View", "Re-renders $$…$$ display math in Reading View with the bundled engine.", true],

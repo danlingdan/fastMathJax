@@ -68,22 +68,22 @@ export function createReadingViewProcessor(
             rerender(plugin, inlineNodes, inlineTex, false, pdfExport),
         ]);
 
-        if (pdfExport) {
-            await repairPdfDollarParagraphs(
-                plugin,
-                element,
-                sourceText,
-                context.sourcePath,
-            );
-        }
+        await repairDollarParagraphs(
+            plugin,
+            element,
+            sourceText,
+            context.sourcePath,
+            pdfExport,
+        );
     };
 }
 
-async function repairPdfDollarParagraphs(
+async function repairDollarParagraphs(
     plugin: LatestMathJaxPlugin,
     element: HTMLElement,
     source: string,
     sourcePath: string,
+    pdfExport: boolean,
 ): Promise<void> {
     const sanitized = escapeUnsafeDollarDelimiters(source);
     if (sanitized === source) return;
@@ -99,7 +99,10 @@ async function repairPdfDollarParagraphs(
 
         const target = uniqueParagraphForBlock(element, originalBlock);
         if (!target) {
-            logger.debug("PDF export: could not safely identify currency paragraph; keeping output");
+            logger.debug(
+                `${pdfExport ? "PDF export" : "Reading View"}: ` +
+                "could not safely identify currency paragraph; keeping output",
+            );
             continue;
         }
 
@@ -122,21 +125,24 @@ async function repairPdfDollarParagraphs(
                     Array.from(staging.querySelectorAll<HTMLElement>(".math.math-block")),
                     sources.filter((entry) => entry.display),
                     true,
-                    true,
+                    pdfExport,
                 ),
                 rerender(
                     plugin,
                     Array.from(staging.querySelectorAll<HTMLElement>(".math.math-inline")),
                     sources.filter((entry) => !entry.display),
                     false,
-                    true,
+                    pdfExport,
                 ),
             ]);
 
             const replacement = staging.querySelector("p");
             if (replacement) target.replaceWith(replacement);
         } catch (error) {
-            logger.warn("PDF export: failed to repair currency paragraph:", error);
+            logger.warn(
+                `${pdfExport ? "PDF export" : "Reading View"}: failed to repair currency paragraph:`,
+                error,
+            );
         } finally {
             component.unload();
         }

@@ -4,6 +4,7 @@ import type LatestMathJaxPlugin from "../main";
 import { createFallbackElement } from "../render/fallback";
 import { findMathRanges, type RecoveredMathRange } from "../utils/mathSource";
 import { logger } from "../utils/logger";
+import { canRestoreBuiltIn } from "./lifecycle";
 
 const HANDLED_ATTR = "data-latest-mathjax-live-preview";
 const SOURCE_ATTR = "data-latest-mathjax-source";
@@ -34,8 +35,10 @@ export class LivePreviewRenderer {
                 private animationFrame: number | null = null;
                 private lastRevision = -1;
                 private readonly observer: MutationObserver;
+                private readonly schedulingWindow: Window;
 
                 constructor(private readonly view: EditorView) {
+                    this.schedulingWindow = view.dom.ownerDocument.defaultView ?? window;
                     const Observer = view.dom.ownerDocument.defaultView?.MutationObserver
                         ?? MutationObserver;
                     this.observer = new Observer((records) => {
@@ -81,13 +84,15 @@ export class LivePreviewRenderer {
                 }
 
                 private schedule(delay: number): void {
-                    if (this.timer !== null) window.clearTimeout(this.timer);
-                    if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
-                    this.timer = window.setTimeout(() => {
+                    if (this.timer !== null) this.schedulingWindow.clearTimeout(this.timer);
+                    if (this.animationFrame !== null) {
+                        this.schedulingWindow.cancelAnimationFrame(this.animationFrame);
+                    }
+                    this.timer = this.schedulingWindow.setTimeout(() => {
                         this.timer = null;
                         // Obsidian mounts its math widgets during the view update. Run after the next
                         // layout frame so the wrappers exist before we query them.
-                        this.animationFrame = window.requestAnimationFrame(() => {
+                        this.animationFrame = this.schedulingWindow.requestAnimationFrame(() => {
                             this.animationFrame = null;
                             this.renderMountedMath();
                         });
@@ -172,8 +177,10 @@ export class LivePreviewRenderer {
 
                 destroy(): void {
                     this.observer.disconnect();
-                    if (this.timer !== null) window.clearTimeout(this.timer);
-                    if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
+                    if (this.timer !== null) this.schedulingWindow.clearTimeout(this.timer);
+                    if (this.animationFrame !== null) {
+                        this.schedulingWindow.cancelAnimationFrame(this.animationFrame);
+                    }
 
                     const ranges = findMathRanges(this.view.state.doc.toString());
                     const wrappers = new Set<HTMLElement>(Array.from(
@@ -202,10 +209,13 @@ export class LivePreviewRenderer {
                             from: 0,
                             to: 0,
                         } : undefined);
+                        const renderedAtDestroy = rendered;
                         wrapper.removeAttribute(HANDLED_ATTR);
                         if (!source?.tex) continue;
                         void plugin.renderWithBuiltIn(source.tex, source.display).then((rendered) => {
-                            if (wrapper.isConnected) wrapper.replaceChildren(rendered);
+                            if (canRestoreBuiltIn(wrapper, renderedAtDestroy)) {
+                                wrapper.replaceChildren(rendered);
+                            }
                         }).catch((error) => {
                             logger.warn("Live Preview: failed to restore Obsidian output:", error);
                         });

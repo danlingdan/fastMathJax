@@ -1,6 +1,7 @@
 # Project status
 
-Latest MathJax `0.1.3` is feature-complete for its declared first-release scope and has been tested in a real Obsidian desktop runtime. It is marked desktop-only until a separate mobile acceptance pass is completed.
+Latest MathJax `0.1.4` is released and runtime-verified. It remains desktop-only until a separate
+mobile acceptance pass is completed.
 
 ## Completed
 
@@ -11,23 +12,40 @@ Latest MathJax `0.1.3` is feature-complete for its declared first-release scope 
 - Deterministic PDF export from either editor mode using an isolated SVG print renderer.
 - Global TeX packages, preamble/macros, cache, debounce, scale, fallback modes and popout-document styling.
 - Settings normalization and immediate refresh of affected surfaces.
+- Searchable declarative settings on Obsidian 1.13+ with the imperative tab retained for 1.8–1.12.
+- Revision-aware Live Preview teardown that cannot overwrite output mounted by a newer renderer.
 - Version inspector, render test view and release metadata validation.
 
 Hover Preview and Canvas remain explicitly unsupported because those surfaces do not expose a reliable public raw-TeX hook. Their settings are disabled and labelled as planned; they are not part of the initial release scope. Reading View is enabled by default; Live Preview is supported but opt-in on a fresh install.
 
-## Verification (2026-08-14)
+## Verification (2026-08-23 release)
 
 | Gate | Result |
 | --- | --- |
 | TypeScript typecheck | Passed |
-| Unit/integration suite | 32/32 passed across 6 files |
+| Unit/integration suite | 36/36 passed across 8 files for 0.1.4 |
 | Production build | Passed |
 | Release metadata validation | Passed (`manifest.json`, `package.json`, bundle banner) |
 | Dependency audit | 0 known vulnerabilities |
-| Obsidian desktop acceptance | Passed on Obsidian 1.13.7 in an isolated vault |
-| PDF export acceptance | Live Preview and Reading View produced visually identical one-page output |
+| Obsidian desktop acceptance | Passed on Obsidian 1.13.7: settings, CommonHTML and SVG, macros, dynamic glyphs, currency repair, literal code, fallback, and disable/re-enable restoration |
+| PDF export acceptance | Passed from Live Preview and Reading View; rendered pages were pixel-identical and visually complete |
 
-The runtime acceptance covered Reading View and Live Preview, inline/display formulas, a global `\\R` macro, New Computer Modern dynamic glyphs (`\\mathbb`, `\\mathcal`), matrices, extensible arrows, fenced/inline code exclusion, failure fallback, plugin reload and captured runtime errors. PDF acceptance additionally verified both source modes after a cold plugin reload: `\\R` exported as `ℝ`, currency text remained literal, all valid formulas remained visible, and an invalid expression degraded to readable source. No fresh runtime errors were captured.
+The 0.1.3 runtime acceptance covered Reading View and Live Preview, inline/display formulas, a
+global `\\R` macro, New Computer Modern dynamic glyphs (`\\mathbb`, `\\mathcal`), matrices,
+extensible arrows, fenced/inline code exclusion, failure fallback, plugin reload and captured
+runtime errors. Its PDF pass additionally verified both source modes after a cold plugin reload.
+Those results remain historical evidence; the 0.1.4 runtime pass repeated the applicable surfaces.
+
+The current 0.1.4 pass additionally verified the declarative settings surface, live renderer
+switching, reversible plugin disable/re-enable, and Reading View preservation of `$5`, `$6`, and a
+later `$x^2$` formula. A full disable/re-enable cold-loaded the final CSS and confirmed readable
+CommonHTML output for the global macro, integral, matrix, extensible arrow and dynamic New CM
+glyphs. The runtime console contained only the fixture's intentional invalid-command fallback;
+the earlier dynamic-font `getChar` recursion did not recur.
+
+PDF export was repeated from both Live Preview and Reading View after the final cold startup. Both
+single-page outputs preserved macros, currency text, display math, matrices, extensible arrows,
+code exclusion and readable raw fallback. Poppler-rendered page PNGs were pixel-identical.
 
 ## Release artifacts
 

@@ -299,15 +299,3 @@
     border-radius: var(--radius-s);
     padding: 0.15em 0.35em;
 }
-
-/*
- * Obsidian's bundled MathJax 3 stylesheet draws glyphs through `mjx-c::before`.
- * MathJax 4 NewCM emits real text instead, so the old pseudo-element would add a
- * second glyph with incompatible metrics (most visibly detaching a square-root bar).
- * Scope the reset to our marked containers so Obsidian's own formulas are untouched.
- */
-/* stylelint-disable selector-type-no-unknown */
-.math mjx-container[data-latest-mathjax-engine] mjx-c::before {
-    content: none;
-}
-/* stylelint-enable selector-type-no-unknown */

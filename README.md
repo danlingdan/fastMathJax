@@ -3,8 +3,9 @@
 Use a bundled, up-to-date **MathJax 4** engine for math rendering in Obsidian — without touching
 `window.MathJax` or Obsidian's built-in renderer.
 
-> Status: **0.1.3 released and runtime-verified.** Typecheck, 32 automated tests,
-> production/release checks, and isolated-vault acceptance on Obsidian 1.13.7 pass.
+> Status: **0.1.4 is the current released and runtime-verified build.** Typecheck, 36 automated
+> tests, production build, isolated-vault desktop acceptance and PDF export from both editor modes
+> pass.
 > See [`docs/STATUS.md`](docs/STATUS.md) for the verification record and remaining surface limits.
 
 ## Why
@@ -101,7 +102,8 @@ stabilization through `1.0.0` is tracked in the detailed [`future roadmap`](docs
 | 0.1.0 | First public release and in-app verification | ✅ released |
 | 0.1.1 | Automated CI and tag-driven releases | ✅ released |
 | 0.1.2 | Community-review fixes and provenance attestations | ✅ released |
-| 0.1.3 | Reading View lifecycle and deterministic PDF export fixes | ✅ current release |
+| 0.1.3 | Reading View lifecycle and deterministic PDF export fixes | ✅ released |
+| 0.1.4 | Settings compatibility and lifecycle stabilization | ✅ current release |
 
 ## Development
 

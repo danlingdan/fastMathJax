@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.1.4 - 2026-08-23
+
+- Added Obsidian 1.13+ declarative, searchable settings while retaining the imperative settings
+  tab for the declared Obsidian 1.8–1.12 compatibility range.
+- Prevented a delayed Live Preview teardown from overwriting math already mounted by a newer
+  renderer revision, and bound popout scheduling to the popout window lifecycle.
+- Repaired currency-like dollar paragraphs in Reading View as well as PDF export, so literal
+  amounts cannot be swallowed while a later inline formula is re-rendered.
+- Made bundled dynamic font setup replayable across CommonHTML/SVG engine rebuilds and eagerly
+  populated each output instance, preventing shared load markers from breaking overlapping
+  CommonHTML engines during plugin hot reload. Regression coverage now includes both a
+  CommonHTML -> SVG -> CommonHTML cycle and concurrent CommonHTML instances.
+- Removed an obsolete Obsidian MathJax 3 pseudo-glyph reset that hid MathJax 4 CommonHTML glyphs
+  after a cold CSS reload.
+- Moved opt-in diagnostics to the console debug channel and added focused lifecycle and logging
+  regression coverage.
+
 ## 0.1.3 - 2026-08-14
 
 - Made Reading View takeover reversible across settings refresh, plugin disable and reload, so

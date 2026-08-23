@@ -19,7 +19,7 @@ class Logger {
     }
 
     debug(...args: unknown[]): void {
-        if (this.enabled) console.log(PREFIX, ...args);
+        if (this.enabled) console.debug(PREFIX, ...args);
     }
 
     /** Warnings are always shown — they indicate real problems, not diagnostics. */
@@ -39,7 +39,7 @@ class Logger {
             return fn();
         } finally {
             const ms = performance.now() - start;
-            console.log(PREFIX, `${label} took ${ms.toFixed(1)}ms`);
+            console.debug(PREFIX, `${label} took ${ms.toFixed(1)}ms`);
         }
     }
 }

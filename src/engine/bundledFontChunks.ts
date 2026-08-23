@@ -89,3 +89,35 @@ export function configureBundledFontLoading(): void {
     mathjax.asyncLoad = () => undefined;
     mathjax.asyncIsSynchronous = true;
 }
+
+interface DynamicFileState {
+    promise: Promise<void> | null;
+    failed: boolean;
+}
+
+interface DynamicFontClassState {
+    dynamicFiles?: Record<string, DynamicFileState>;
+    dynamicExtensions?: Map<string, { files: Record<string, DynamicFileState> }>;
+}
+
+/**
+ * Makes bundled dynamic font setup replayable for a fresh output-jax instance.
+ *
+ * MathJax stores each dynamic file's load promise on the font class. Once one CHTML/SVG instance
+ * consumes it, a later instance skips that file's setup callback and therefore misses glyph data
+ * and CSS. Renderer hot-switching creates exactly that sequence, so clear only the load markers;
+ * the statically bundled setup callbacks remain registered.
+ */
+export function resetBundledFontState(fontClass: unknown): void {
+    const state = fontClass as DynamicFontClassState;
+    const reset = (files?: Record<string, DynamicFileState>) => {
+        for (const file of Object.values(files ?? {})) {
+            file.promise = null;
+            file.failed = false;
+        }
+    };
+    reset(state.dynamicFiles);
+    for (const extension of state.dynamicExtensions?.values() ?? []) {
+        reset(extension.files);
+    }
+}

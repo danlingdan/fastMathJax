@@ -1,7 +1,7 @@
 {
   "id": "latest-mathjax",
   "name": "Latest MathJax",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "minAppVersion": "1.8.0",
   "description": "Render math with a bundled, up-to-date MathJax 4 engine without replacing the built-in renderer.",
   "author": "HuaJiaHao",

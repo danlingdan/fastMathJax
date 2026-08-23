@@ -44,16 +44,40 @@ describe("MathJaxEngine", () => {
             .toThrow(MathRenderError);
     });
 
-    it("rebuilds when switching to SVG", () => {
+    it("rebuilds cleanly across CHTML -> SVG -> CHTML switches", () => {
         const instance = engine();
         instance.initialise();
+        const dynamicFormula = String.raw`\mathbb{R}\xrightarrow{\text{limit}}\infty`;
+        const initialDocument = document.implementation.createHTMLDocument("initial-chtml");
+        instance.renderInto(dynamicFormula, { display: false }, initialDocument);
+        const initialStyles = initialDocument.getElementById(
+            "latest-mathjax-chtml-styles",
+        )?.textContent;
         const revision = instance.revision;
-        const config = defaultEngineConfig();
-        config.renderer = "svg";
-        expect(instance.updateConfig(config)).toBe(true);
+        const svg = defaultEngineConfig();
+        svg.renderer = "svg";
+        expect(instance.updateConfig(svg)).toBe(true);
         expect(instance.revision).toBeGreaterThan(revision);
         const rendered = instance.render(String.raw`\mathbb{R} \to \mathcal{F}`, { display: false });
         expect(rendered.querySelector("svg")).not.toBeNull();
+
+        expect(instance.updateConfig(defaultEngineConfig())).toBe(true);
+        const popout = document.implementation.createHTMLDocument("switch-back");
+        const chtml = instance.renderInto(dynamicFormula, { display: false }, popout);
+        expect(chtml.textContent).toContain("ℝ");
+        expect(popout.getElementById("latest-mathjax-chtml-styles")?.textContent)
+            .toBe(initialStyles);
+    });
+
+    it("keeps concurrent CommonHTML font instances independent", () => {
+        const first = engine();
+        const second = engine();
+        first.initialise();
+        second.initialise();
+
+        const formula = String.raw`\mathbb{R}\xrightarrow{\text{limit}}\infty`;
+        expect(first.render(formula, { display: false }).textContent).toContain("ℝ");
+        expect(second.render(formula, { display: false }).textContent).toContain("ℝ");
     });
 
     it("emits assistive MathML when enabled", () => {
@@ -73,7 +97,7 @@ describe("MathJaxEngine", () => {
         expect(copied?.textContent).toContain("mjx-container");
     });
 
-    it("refreshes adaptive styles already copied into a print document", () => {
+    it("refreshes styles already copied into a print document", () => {
         const instance = engine();
         const printDocument = document.implementation.createHTMLDocument("print");
         instance.renderInto("x", { display: false }, printDocument);
