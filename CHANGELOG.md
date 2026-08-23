@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+- Kept the declared Obsidian 1.8 compatibility floor while capability-checking the settings-tab
+  refresh APIs introduced in Obsidian 1.13, and added the official unsupported-API lint rule to
+  the default verification gate.
+
 ## 0.1.4 - 2026-08-23
 
 - Added Obsidian 1.13+ declarative, searchable settings while retaining the imperative settings

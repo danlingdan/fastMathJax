@@ -16,6 +16,7 @@ import {
     type LatestMathJaxSettings,
 } from "./settingsModel";
 import { logger } from "./utils/logger";
+import { invokeModernSettingTabMethod } from "./settingsCompatibility";
 
 export { DEFAULT_SETTINGS, normalizeSettings, toEngineConfig } from "./settingsModel";
 export type { FallbackMode, LatestMathJaxSettings } from "./settingsModel";
@@ -74,7 +75,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         visible: () => this.plugin.settings.fontURL !== DEFAULT_FONT_URL,
                         action: () => {
                             void this.setControlValue("fontURL", DEFAULT_FONT_URL).then(() => {
-                                this.update();
+                                invokeModernSettingTabMethod(this, "update");
                             }).catch(() => undefined);
                         },
                     },
@@ -208,7 +209,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             if (this.settingAffectsRenderedSurfaces(key)) {
                 this.plugin.refreshRenderedSurfaces();
             }
-            this.refreshDomState();
+            invokeModernSettingTabMethod(this, "refreshDomState");
         } catch (error) {
             this.plugin.settings = previous;
             logger.error(`failed to save setting ${key}:`, error);
@@ -329,7 +330,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             `${stats.renders} renders this session`,
         ).addButton((button) => button.setButtonText("Clear cache").onClick(() => {
             this.plugin.engine.clearCache();
-            this.update();
+            invokeModernSettingTabMethod(this, "update");
         }));
     }
 
