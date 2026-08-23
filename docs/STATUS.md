@@ -1,6 +1,6 @@
 # Project status
 
-Latest MathJax `0.1.5` is release-ready and runtime-verified. It remains desktop-only until a separate
+Latest MathJax `0.1.5` is released and runtime-verified. It remains desktop-only until a separate
 mobile acceptance pass is completed.
 
 ## Completed
