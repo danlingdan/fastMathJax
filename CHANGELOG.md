@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.1.5 - 2026-08-24
 
 - Kept the declared Obsidian 1.8 compatibility floor while capability-checking the settings-tab
   refresh APIs introduced in Obsidian 1.13, and added the official unsupported-API lint rule to
