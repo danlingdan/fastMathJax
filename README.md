@@ -1,113 +1,112 @@
+<div align="center">
+
 # Latest MathJax for Obsidian
 
-Use a bundled, up-to-date **MathJax 4** engine for math rendering in Obsidian — without touching
-`window.MathJax` or Obsidian's built-in renderer.
+**An up-to-date MathJax 4 engine for Obsidian — bundled, fully isolated, PDF-safe.**
 
-> Status: **0.1.5 is the current released and runtime-verified build.** Typecheck, 38 automated
-> tests, production build, isolated-vault desktop acceptance and PDF export from both editor modes
-> pass.
-> See [`docs/STATUS.md`](docs/STATUS.md) for the verification record and remaining surface limits.
+[![Latest release](https://img.shields.io/github/v/release/danlingdan/fastMathJax?logo=github&label=release)](https://github.com/danlingdan/fastMathJax/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/danlingdan/fastMathJax/ci.yml?branch=main&label=CI)](https://github.com/danlingdan/fastMathJax/actions/workflows/ci.yml)
+![Obsidian](https://img.shields.io/badge/Obsidian-1.8.0%2B-7c3aed?logo=obsidian&logoColor=white)
+[![License](https://img.shields.io/github/license/danlingdan/fastMathJax)](LICENSE)
+
+Install like any community plugin — three files, no build steps, no other plugins required.
+
+[Getting started](#getting-started) · [Preamble files](#preamble-files-in-your-vault) · [Compatibility](#compatibility) · [Docs](#documentation)
+
+</div>
+
+---
 
 ## Why
 
-Obsidian ships its own MathJax build, and it tends to lag behind upstream. That means new TeX
-packages, new font handling, and upstream bug fixes are not available until Obsidian updates.
-This plugin bundles its own MathJax 4 engine and renders math through it, side by side with the
-built-in one.
+Obsidian ships its own MathJax build, and it lags behind upstream. New TeX packages, better font
+handling and upstream bug fixes only arrive when Obsidian updates. This plugin bundles a current
+**MathJax 4** engine and renders math through it, side by side with the built-in one — **without
+ever touching `window.MathJax` or Obsidian's `renderMath()`**.
 
-## Installation
+## Highlights
 
-For manual installation, download `main.js`, `manifest.json`, and `styles.css` from the
-[latest GitHub release](https://github.com/danlingdan/fastMathJax/releases/latest). Put all three
-files in `<vault>/.obsidian/plugins/latest-mathjax/`, reload Obsidian, then enable **Latest
-MathJax** under **Settings → Community plugins**.
+- **Preamble files in your vault** — keep macros in a versioned `.tex` file; edits hot-reload and
+  apply across every note. *(new in 0.2.0)*
+- **Reading View & Live Preview** — display and inline math taken over through public APIs only.
+- **Deterministic PDF export** — an isolated SVG print engine embeds glyph paths, so exports are
+  pixel-stable and offline-safe from either editor mode.
+- **CHTML or SVG output** — New Computer Modern webfonts from a CDN, or fully offline SVG.
+- **Popout windows** — styled automatically, reusing the same render adapters.
+- **Macro diagnostics** — parse failures name the file or settings text they came from; the
+  previous valid renderer keeps working.
+- **Performance** — LRU formula cache and configurable render debounce for Live Preview.
 
-## Design rules
+## Getting started
 
-1. **Never** `delete window.MathJax` or overwrite it.
-2. **Never** monkey-patch `renderMath()` / `finishRenderMath()`.
-3. The plugin's engine lives in its own module scope, fully isolated from Obsidian's.
-4. Disabling the plugin restores Obsidian's default math rendering with no leftovers.
+1. Download `main.js`, `manifest.json` and `styles.css` from the
+   [latest release](https://github.com/danlingdan/fastMathJax/releases/latest).
+2. Put all three files under `<vault>/.obsidian/plugins/latest-mathjax/`.
+3. Reload Obsidian and enable **Latest MathJax** under *Settings → Community plugins*.
 
-```text
-                    Obsidian
-                       |
-             Markdown / CodeMirror
-                       |
-             +---------+---------+
-             |                   |
-      Obsidian MathJax    Latest MathJax Plugin
-                                 |
-                          MathJax 4 Renderer
-                                 |
-                    +------------+------------+
-                    |                         |
-              Live Preview              Reading View
-```
+Reading View takeover is on by default; Live Preview takeover and inline-math takeover are
+opt-in switches under *Settings → Latest MathJax → Compatibility*.
 
-## Features
+## Preamble files in your vault
 
-- **Reading View** — `$$…$$` display math and `$…$` inline math re-rendered by the bundled engine
-  (inline gated by `Inline math in Reading View`, default off).
-- **Live Preview** — display and inline math taken over through Obsidian's mounted editor widgets;
-  the raw source shows while your cursor is inside a formula (inline gated by
-  `Inline math in Live Preview`, default off). Live Preview takeover itself is also opt-in on a
-  fresh install.
-- **TeX packages / macros / preamble** — toggle TeX packages, define a global preamble
-  (`\newcommand`, `\DeclareMathOperator`, …) in settings, or point the plugin at a
-  **preamble file** in your vault whose definitions are evaluated first and re-read
-  automatically when the file changes. Commands create, open and reload the file.
-- **Performance** — LRU formula cache + configurable render debounce for Live Preview.
-- **Renderer choice** — CommonHTML (New Computer Modern webfont, loaded from jsDelivr by default)
-  or SVG (glyph paths embedded inline, no font download required — fully offline).
-- **Popout windows** — styled automatically (the engine copies its stylesheet into the popout
-  document).
-- **Version inspector** — compare the bundled MathJax against Obsidian's built-in one.
+Macros can live in a versioned file instead of the settings text box:
+
+| Source | Evaluated | Good for |
+| --- | --- | --- |
+| **Preamble file** (vault-relative path, e.g. `math/macros.tex`) | first | shared, versioned definitions — diffable and backed up with the vault |
+| **Global preamble** (settings text) | second | quick personal overrides (`\renewcommand`) |
+
+- The file is re-read automatically after vault edits (debounced per edit burst); a
+  **Reload preamble** command forces it on demand.
+- **Create preamble file** scaffolds the file (and missing folders) with a commented template;
+  **Open preamble file** jumps to it.
+- TeX parse failures are reported against their source — the file path or the settings preamble —
+  and never break rendering of everything else.
+- No absolute paths: a configured path is always vault-relative, and unsafe paths fail visibly.
+
+Both surfaces plus PDF export use the merged definitions. Inline-only setups keep working
+exactly as before 0.2.0.
 
 ## Compatibility
 
 | Surface | Supported | Notes |
 | --- | --- | --- |
-| Reading View | ✅ | TeX recovered from the section's source markdown |
-| Live Preview | ✅ | public editor widgets + document-position mapping |
-| Popout windows | ✅ | reuses the same adapters + per-document style copy |
-| Hover Preview | ❌ (planned) | Obsidian does not expose the raw TeX for hover math |
-| Canvas | ❌ (planned) | canvas cards bypass the markdown post-processor |
+| Reading View | ✅ | display + inline (inline opt-in), reversible takeover |
+| Live Preview | ✅ | public editor widgets + document positions (opt-in) |
+| Popout windows | ✅ | per-document style copy |
+| PDF export | ✅ | isolated SVG engine, deterministic output |
+| Hover Preview / Canvas | ❌ planned | no reliable public raw-TeX hook |
 
-See [`docs/compatibility.md`](docs/compatibility.md) for the detail.
+Desktop only for now; a mobile acceptance pass is pending.
 
 ## Settings
 
-- **Engine**: renderer (CHTML / SVG), scale, font file location (CHTML only), TeX packages,
-  preamble file (vault-relative path, optional) and global preamble, assistive MathML.
-- **Performance**: cache on/off + size, render debounce.
-- **Compatibility**: toggles for Reading View (on by default), Live Preview (off by default),
-  Popout support (on by default), and the disabled planned Hover / Canvas surfaces.
+- **Engine** — renderer (CHTML / SVG), scale, font file location, TeX packages, preamble file,
+  global preamble, assistive MathML.
+- **Performance** — formula cache on/off + size, render debounce.
+- **Compatibility** — per-surface toggles with safe defaults; fallback mode when a formula
+  cannot be rendered.
+- **Developer** — debug logging, version inspector (bundled vs. built-in MathJax).
 
-## Roadmap
+On Obsidian 1.13+ the settings tab is searchable; 1.8–1.12 get the classic tab.
 
-The early `0.0.x` entries below are development milestones; `0.1.0` and later are published
-releases. See [`CHANGELOG.md`](CHANGELOG.md) for release notes and
-[`docs/STATUS.md`](docs/STATUS.md) for current verification details. Planned work from `0.1.x`
-stabilization through `1.0.0` is tracked in the detailed [`future roadmap`](docs/ROADMAP.md).
+## Isolation guarantees
 
-| Version | Goal | Status |
-| --- | --- | --- |
-| 0.0.1 | MathJax 4 engine + test view + version inspector + Reading View `$$…$$` | ✅ development milestone |
-| 0.0.2 | Reading View inline `$…$` (Task 6) | ✅ development milestone |
-| 0.0.3 | Live Preview prototype (display math, Task 7) | ✅ development milestone |
-| 0.0.4 | Full Live Preview (inline math, cursor editing) | ✅ development milestone |
-| 0.0.5 | Cache, debounce, async render queue | ✅ development milestone |
-| 0.0.6 | Global macros / preamble / packages | ✅ development milestone |
-| 0.0.7 | Compatibility investigation | ✅ popout; hover/canvas remain unsupported |
-| 0.0.8 | SVG renderer + font configuration | ✅ development milestone |
-| 0.1.0 | First public release and in-app verification | ✅ released |
-| 0.1.1 | Automated CI and tag-driven releases | ✅ released |
-| 0.1.2 | Community-review fixes and provenance attestations | ✅ released |
-| 0.1.3 | Reading View lifecycle and deterministic PDF export fixes | ✅ released |
-| 0.1.4 | Settings compatibility and lifecycle stabilization | ✅ released |
-| 0.1.5 | Capability-guarded settings refresh APIs for Obsidian 1.13 | ✅ current release |
-| 0.2.0 | Vault-based preamble workflow | 🔨 in development |
+1. `window.MathJax` is never deleted, replaced or patched.
+2. `renderMath()` / `finishRenderMath()` are never monkey-patched.
+3. The bundled engine lives in its own module scope.
+4. Disabling the plugin restores Obsidian's default math rendering with no leftovers.
+
+When the bundled engine cannot render a formula, the configurable fallback shows Obsidian's own
+output, the raw LaTeX, or a compact error — the note is never left blank.
+
+## Documentation
+
+- [`docs/STATUS.md`](docs/STATUS.md) — what's done, verification records
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's next, acceptance gates
+- [`docs/architecture.md`](docs/architecture.md) — how the pieces fit
+- [`docs/compatibility.md`](docs/compatibility.md) — surface-by-surface detail
+- [`docs/dev-plan.zh.md`](docs/dev-plan.zh.md) — original Chinese development plan
 
 ## Development
 
@@ -115,43 +114,34 @@ stabilization through `1.0.0` is tracked in the detailed [`future roadmap`](docs
 npm install     # install dependencies
 npm run dev     # watch build
 npm run build   # type-check + production build
-npm test        # automated unit/integration tests
-npm run check   # complete local release gate
+npm test        # automated unit/integration tests (vitest)
+npm run check   # complete local release gate (lint + tests + build + metadata)
 ```
 
-To test inside a vault, symlink or copy `main.js`, `manifest.json` and `styles.css` into
+To try it in a vault, copy `main.js`, `manifest.json` and `styles.css` into
 `<vault>/.obsidian/plugins/latest-mathjax/`.
 
-## Releasing
+<details>
+<summary>Releasing</summary>
 
-Releases are built by GitHub Actions; do not upload generated assets manually. Prepare the next
-version, update `CHANGELOG.md`, and run the complete gate. Then commit and push the resulting
-version files. The release tag must be plain SemVer (for example, `0.1.3`, not `v0.1.3`):
+Releases are built by GitHub Actions from a plain SemVer tag (`0.2.0`, not `v0.2.0`) — never
+upload generated assets manually. Prepare the version, update `CHANGELOG.md`, pass
+`npm run check`, then:
 
 ```bash
-npm version patch --no-git-tag-version
-npm run check
+npm version minor --no-git-tag-version   # or patch
 git add package.json package-lock.json manifest.json versions.json CHANGELOG.md
-VERSION=$(node -p "require('./package.json').version")
-git commit -m "release: prepare ${VERSION}"
+git commit -m "release: publish $(node -p "require('./package.json').version")"
 git push origin main
-git tag -a "${VERSION}" -m "Latest MathJax ${VERSION}"
-git push origin "${VERSION}"
+git tag -a "0.2.0" -m "Latest MathJax 0.2.0"
+git push origin "0.2.0"
 ```
 
-The tag workflow verifies version consistency, installs from the lockfile, runs the complete check,
-attests their build provenance, and publishes the three assets supported by the community directory:
-`main.js`, `manifest.json`, and `styles.css`.
+The tag workflow verifies version consistency, runs the complete check, attests build
+provenance, and publishes `main.js`, `manifest.json` and `styles.css`.
 
-## Docs
-
-- [`docs/STATUS.md`](docs/STATUS.md) — **what's done** (task/stage progress, verification, risks)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — **what's next** (priorities, releases, acceptance gates)
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/obsidian-mathjax-research.md`](docs/obsidian-mathjax-research.md)
-- [`docs/compatibility.md`](docs/compatibility.md)
+</details>
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-MathJax itself is Apache-2.0 licensed.
+[MIT](LICENSE) — MathJax itself is Apache-2.0.
