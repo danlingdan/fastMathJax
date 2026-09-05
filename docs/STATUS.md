@@ -1,13 +1,13 @@
 # Project status
 
-Latest MathJax `0.1.5` is released and runtime-verified. It remains desktop-only until a separate
-mobile acceptance pass is completed.
+Latest MathJax `0.2.0` is released, desktop-accepted and runtime-verified. It remains
+desktop-only until a separate mobile acceptance pass is completed.
 
-## In development: 0.2.0 preamble workflow
+## 0.2.0 — preamble workflow (released 2026-09-06)
 
-The `0.2.0` vault-based preamble workflow is implemented on `main` and **desktop-accepted** in a
-real Obsidian 1.13.7 vault; it is not yet released. Automated gates at time of writing: typecheck,
-68/68 tests across 12 files, lint, and production build all pass. What is implemented:
+The vault-based preamble workflow is desktop-accepted in a real Obsidian 1.13.7 vault. Automated
+gates at release: typecheck, 80/80 tests across 13 files, lint, production build and release
+metadata validation all pass. What shipped:
 
 - Optional vault-relative **preamble file** setting; file TeX is evaluated before the inline
   settings preamble (deterministic, tested merge order) and re-read automatically after vault
@@ -42,7 +42,7 @@ print engine — including inline formulas (`2\XX` → 2𝒳) in a note that als
 paragraphs with a code span; and such a paragraph keeps every dollar literal with its math
 rendered in both Reading View and the exported PDF.
 
-Remaining before release: the release gate described in the README.
+Release: tag `0.2.0` built and published by GitHub Actions with provenance attestation.
 
 ## Completed
 

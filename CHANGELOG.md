@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased (0.2.0 target)
+## 0.2.0 - 2026-09-06
 
 - Added an optional vault-relative **preamble file** setting: its TeX definitions are evaluated
   before the inline settings preamble in every formula across the vault, and the file is re-read
