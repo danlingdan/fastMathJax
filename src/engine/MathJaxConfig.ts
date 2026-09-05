@@ -17,6 +17,17 @@ export const DEFAULT_FONT_URL =
 export type RendererKind = "chtml" | "svg";
 
 /**
+ * One labeled part of the merged preamble.
+ *
+ * The engine evaluates segments in order so a parse failure can be attributed to its source
+ * (vault file vs. settings text) instead of pointing into an opaque merged string.
+ */
+export interface PreambleSegment {
+    source: string;
+    text: string;
+}
+
+/**
  * Everything the engine needs. Intentionally free of Obsidian types — the settings layer maps its
  * own shape onto this.
  */
@@ -26,6 +37,11 @@ export interface EngineConfig {
     packages: string[];
     /** LaTeX evaluated once at engine start; \newcommand definitions persist for the session. */
     preamble: string;
+    /**
+     * Optional labeled split of `preamble`. When absent, the whole preamble is evaluated as a
+     * single unlabeled segment — the pre-0.2.0 behavior.
+     */
+    preambleSegments?: PreambleSegment[];
     /** Root em size in px used for CHTML metrics; should track the Obsidian font size. */
     fontSize: number;
     /** Output scale multiplier. */

@@ -38,6 +38,36 @@ describe("MathJaxEngine", () => {
         expect(instance.preambleProblem).toBeNull();
     });
 
+    it("attributes preamble failures to their segment and keeps rendering", () => {
+        const config = defaultEngineConfig();
+        config.preamble = String.raw`\notARealCommand` + "\n" + String.raw`\newcommand{\R}{\mathbb{R}}`;
+        config.preambleSegments = [
+            {
+                source: 'preamble file "macros/preamble.tex"',
+                text: String.raw`\notARealCommand`,
+            },
+            { source: "settings preamble", text: String.raw`\newcommand{\R}{\mathbb{R}}` },
+        ];
+        const instance = engine(config);
+        instance.initialise();
+
+        const problems = instance.preambleProblems;
+        expect(problems).toHaveLength(1);
+        expect(problems[0].source).toContain("macros/preamble.tex");
+        expect(instance.preambleProblem).toBe(problems[0].message);
+        // The failing segment must not prevent later segments (or formulas) from working.
+        const rendered = instance.render(String.raw`x \in \R`, { display: false });
+        expect(rendered.textContent).toContain("ℝ");
+    });
+
+    it("keeps the unlabeled preamble path as a single segment", () => {
+        const config = defaultEngineConfig();
+        config.preamble = String.raw`\newcommand{\R}{\mathbb{R}}`;
+        const instance = engine(config);
+        expect(instance.preambleProblems).toEqual([]);
+        expect(() => instance.render(String.raw`x \in \R`, { display: false })).not.toThrow();
+    });
+
     it("surfaces TeX parse errors", () => {
         const instance = engine();
         expect(() => instance.render(String.raw`\notARealCommand`, { display: false }))

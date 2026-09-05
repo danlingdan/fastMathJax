@@ -97,12 +97,26 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             {
                 type: "group",
                 heading: "Macros",
-                items: [{
-                    name: "Global preamble",
-                    desc: "LaTeX evaluated once when the engine starts. Applied when the field loses focus.",
-                    aliases: ["macros", "newcommand"],
-                    render: (setting) => this.renderPreambleControl(setting),
-                }],
+                items: [
+                    {
+                        name: "Preamble file",
+                        desc: "Optional vault-relative path whose TeX is evaluated before the " +
+                            "inline preamble, e.g. math/macros.tex. Re-read automatically when " +
+                            "the file changes.",
+                        aliases: ["preamble file", "macros file", "tex file"],
+                        control: {
+                            type: "text",
+                            key: "preambleFile",
+                            placeholder: "mathjax-preamble.tex",
+                        },
+                    },
+                    {
+                        name: "Global preamble",
+                        desc: "LaTeX evaluated once when the engine starts. Applied when the field loses focus.",
+                        aliases: ["macros", "newcommand"],
+                        render: (setting) => this.renderPreambleControl(setting),
+                    },
+                ],
             },
             {
                 type: "group",
@@ -206,7 +220,11 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 this.plugin.settings = normalizeSettings({ ...previous, [key]: value });
             }
             await this.plugin.saveSettings();
-            if (this.settingAffectsRenderedSurfaces(key)) {
+            if (key === "preambleFile") {
+                // The reload path refreshes surfaces itself, and only when the file content
+                // actually changed — a path-only edit never re-renders.
+                void this.plugin.reloadPreambleFile();
+            } else if (this.settingAffectsRenderedSurfaces(key)) {
                 this.plugin.refreshRenderedSurfaces();
             }
             invokeModernSettingTabMethod(this, "refreshDomState");
@@ -263,6 +281,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             "cacheSize",
             "renderDebounce",
             "debugMode",
+            // Handled by the preamble file reload, which refreshes only on a content change.
+            "preambleFile",
         ].includes(key);
     }
 
@@ -298,11 +318,21 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         textarea.value = this.plugin.settings.preamble;
         const status = wrapper.createDiv({ cls: "latest-mathjax-preamble-status" });
         const showStatus = () => {
-            const problem = this.plugin.engine.preambleProblem;
-            status.toggleClass("is-error", Boolean(problem));
-            status.setText(problem
-                ? `Preamble error: ${problem}`
-                : this.plugin.settings.preamble.trim() ? "Preamble applied." : "");
+            status.empty();
+            const problems = this.plugin.preambleDiagnostics;
+            if (problems.length > 0) {
+                status.addClass("is-error");
+                for (const problem of problems) {
+                    status.createDiv({
+                        text: `${problem.source}: ${problem.message}`,
+                    });
+                }
+            } else {
+                status.removeClass("is-error");
+                const hasPreamble = this.plugin.settings.preamble.trim().length > 0;
+                const hasFile = this.plugin.settings.preambleFile.trim().length > 0;
+                status.setText(hasPreamble || hasFile ? "Preamble applied." : "");
+            }
         };
         showStatus();
         textarea.addEventListener("blur", () => {
@@ -487,6 +517,30 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         new Setting(root).setName("Macros").setHeading();
 
         new Setting(root)
+            .setName("Preamble file")
+            .setDesc(
+                "Optional vault-relative path whose TeX is evaluated before the inline preamble " +
+                    "below, e.g. macros/mathjax.tex. Re-read automatically when the file changes.",
+            )
+            .addText((text) => {
+                text
+                    .setPlaceholder("mathjax-preamble.tex")
+                    .setValue(this.plugin.settings.preambleFile);
+                // Applied on blur, like the inline preamble: a path change can rebuild the
+                // engine, which is too heavy per keystroke.
+                text.inputEl.addEventListener("blur", () => {
+                    const value = text.inputEl.value;
+                    if (value === this.plugin.settings.preambleFile) return;
+                    void (async () => {
+                        this.plugin.settings.preambleFile = value;
+                        await this.plugin.saveSettings();
+                        await this.plugin.reloadPreambleFile();
+                        showStatus();
+                    })();
+                });
+            });
+
+        new Setting(root)
             .setName("Global preamble")
             .setDesc(
                 "LaTeX evaluated once when the engine starts. Definitions stay available in every " +
@@ -511,15 +565,19 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         const status = wrapper.createDiv({ cls: "latest-mathjax-preamble-status" });
         const showStatus = () => {
             status.empty();
-            const problem = this.plugin.engine.preambleProblem;
-            if (problem) {
+            const problems = this.plugin.preambleDiagnostics;
+            if (problems.length > 0) {
                 status.addClass("is-error");
-                status.setText(`Preamble error: ${problem}`);
+                for (const problem of problems) {
+                    status.createDiv({
+                        text: `${problem.source}: ${problem.message}`,
+                    });
+                }
             } else {
                 status.removeClass("is-error");
-                status.setText(
-                    this.plugin.settings.preamble.trim() ? "Preamble applied." : "",
-                );
+                const hasPreamble = this.plugin.settings.preamble.trim().length > 0;
+                const hasFile = this.plugin.settings.preambleFile.trim().length > 0;
+                status.setText(hasPreamble || hasFile ? "Preamble applied." : "");
             }
         };
         showStatus();

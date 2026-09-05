@@ -2,6 +2,8 @@ import {
     Notice,
     MarkdownView,
     Plugin,
+    TFile,
+    TFolder,
     WorkspaceLeaf,
     finishRenderMath,
     loadMathJax,
@@ -21,8 +23,24 @@ import { createReadingViewProcessor } from "./preview/MathPostProcessor";
 import { ReadingViewSnapshotStore } from "./preview/ReadingViewSnapshotStore";
 import { LivePreviewRenderer } from "./editor/LivePreviewRenderer";
 import { CompatibilityManager } from "./compatibility/CompatibilityManager";
+import { PreambleFileService } from "./preamble/PreambleFileService";
+import {
+    normalizePreamblePath,
+    type PreambleProblem,
+} from "./preamble/preambleModel";
 import { logger } from "./utils/logger";
 import { buildVersionReport, type VersionReport } from "./utils/version";
+
+const PREAMBLE_TEMPLATE = [
+    "% Latest MathJax preamble file",
+    "%",
+    "% Definitions in this file are evaluated before the inline settings preamble and are",
+    "% available in every formula across the vault. Example:",
+    "%",
+    "% \\newcommand{\\R}{\\mathbb{R}}",
+    "% \\DeclareMathOperator{\\Var}{Var}",
+    "",
+].join("\n");
 
 export default class LatestMathJaxPlugin extends Plugin {
     settings: LatestMathJaxSettings = { ...DEFAULT_SETTINGS };
@@ -31,6 +49,11 @@ export default class LatestMathJaxPlugin extends Plugin {
     compatibility!: CompatibilityManager;
     readonly readingViewSnapshots = new ReadingViewSnapshotStore();
     versionReport: VersionReport | null = null;
+    /** Loaded content of the configured preamble file; runtime state, never persisted. */
+    private filePreamble = "";
+    /** Why the configured preamble file is not applied, if it cannot be read. */
+    private preambleFileProblem: PreambleProblem | null = null;
+    private preambleFiles!: PreambleFileService;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -41,17 +64,23 @@ export default class LatestMathJaxPlugin extends Plugin {
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
         this.compatibility = new CompatibilityManager(document);
+        this.preambleFiles = new PreambleFileService({
+            getRawPath: () => this.settings.preambleFile,
+            readFile: (path) => this.app.vault.adapter.read(path),
+            statPath: (path) => {
+                const abstract = this.app.vault.getAbstractFileByPath(path);
+                if (abstract instanceof TFolder) return "folder";
+                return abstract instanceof TFile ? "file" : "missing";
+            },
+            applyResult: (content, problem) =>
+                this.applyPreambleFileState(content, problem),
+            onContentApplied: () => this.refreshRenderedSurfaces(),
+        });
 
         // Building the engine is a few milliseconds of work, but it also injects a stylesheet.
         // Deferring to layout-ready keeps startup clean and avoids touching a half-built workspace.
         this.app.workspace.onLayoutReady(() => {
-            try {
-                this.engine.initialise();
-            } catch (err) {
-                logger.error("engine initialisation failed:", err);
-                new Notice("Latest MathJax: engine failed to start, see console for details.");
-            }
-            void this.refreshVersionReport();
+            void this.startupEngine();
         });
 
         this.registerView(
@@ -80,6 +109,24 @@ export default class LatestMathJaxPlugin extends Plugin {
             },
         });
 
+        this.addCommand({
+            id: "create-preamble-file",
+            name: "Create preamble file",
+            callback: () => void this.createPreambleFile(),
+        });
+
+        this.addCommand({
+            id: "open-preamble-file",
+            name: "Open preamble file",
+            callback: () => void this.openPreambleFile(),
+        });
+
+        this.addCommand({
+            id: "reload-preamble",
+            name: "Reload preamble",
+            callback: () => void this.reloadPreambleCommand(),
+        });
+
         this.addSettingTab(new LatestMathJaxSettingTab(this.app, this));
 
         // Reading View: take over $$…$$ display math in rendered notes. The processor is a no-op
@@ -91,6 +138,28 @@ export default class LatestMathJaxPlugin extends Plugin {
         // rendered contents. Registered once; settings are read on every scheduled refresh.
         this.registerEditorExtension(new LivePreviewRenderer(this).getExtension());
 
+        // Preamble file events. registerEvent removes these on unload; the service debounces the
+        // actual reloads. Renames carry both the new path and the old one — either may be the
+        // configured file moving in or out.
+        this.registerEvent(
+            this.app.vault.on("create", (file) =>
+                this.preambleFiles.handleVaultEvent(file.path, "create")),
+        );
+        this.registerEvent(
+            this.app.vault.on("modify", (file) =>
+                this.preambleFiles.handleVaultEvent(file.path, "modify")),
+        );
+        this.registerEvent(
+            this.app.vault.on("delete", (file) =>
+                this.preambleFiles.handleVaultEvent(file.path, "delete")),
+        );
+        this.registerEvent(
+            this.app.vault.on("rename", (file, oldPath) => {
+                this.preambleFiles.handleVaultEvent(file.path, "rename");
+                this.preambleFiles.handleVaultEvent(oldPath, "rename");
+            }),
+        );
+
         logger.debug(`plugin loaded, bundled MathJax ${this.engine.version}`);
     }
 
@@ -98,6 +167,7 @@ export default class LatestMathJaxPlugin extends Plugin {
         // Restore Obsidian's own formula DOM before removing the stylesheet used by our output.
         // This must be synchronous: an async preview rerender can finish after the engine is gone.
         this.readingViewSnapshots.restoreAll();
+        this.preambleFiles?.dispose();
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
         this.engine?.dispose();
@@ -117,7 +187,9 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.engine.setCacheSize(
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
-        const rebuilt = this.engine.updateConfig(toEngineConfig(this.settings));
+        const rebuilt = this.engine.updateConfig(
+            toEngineConfig(this.settings, this.filePreamble),
+        );
         // PDF uses a private SVG engine so export never depends on remote CHTML webfonts.
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
@@ -132,7 +204,7 @@ export default class LatestMathJaxPlugin extends Plugin {
     ): HTMLElement {
         if (!pdfExport) return this.engine.renderInto(tex, { display }, targetDocument);
         if (!this.pdfEngine) {
-            const config = toEngineConfig(this.settings);
+            const config = toEngineConfig(this.settings, this.filePreamble);
             config.renderer = "svg";
             this.pdfEngine = new MathJaxEngine(
                 config,
@@ -154,6 +226,161 @@ export default class LatestMathJaxPlugin extends Plugin {
             if (leaf.view instanceof MarkdownView) leaf.view.previewMode.rerender(true);
         });
         this.app.workspace.updateOptions();
+    }
+
+    // ---------------------------------------------------------------- preamble
+
+    /**
+     * Applies a fresh preamble-file load to plugin state and the engine config.
+     * Returns true only when the applied *content* changed; a problem-only update (same content,
+     * different reason) must not re-render every surface.
+     */
+    private applyPreambleFileState(content: string, problem: PreambleProblem | null): boolean {
+        const contentChanged = this.filePreamble !== content;
+        this.filePreamble = content;
+        this.preambleFileProblem = problem;
+        if (contentChanged) {
+            this.engine.updateConfig(toEngineConfig(this.settings, content));
+        }
+        return contentChanged;
+    }
+
+    /** Diagnostics shown in the settings tab: file-read problems plus TeX parse problems. */
+    get preambleDiagnostics(): PreambleProblem[] {
+        const problems: PreambleProblem[] = [];
+        if (this.preambleFileProblem) problems.push(this.preambleFileProblem);
+        problems.push(...this.engine.preambleProblems);
+        return problems;
+    }
+
+    private async startupEngine(): Promise<void> {
+        // Load the preamble file before the first build so startup renders once, already with
+        // the file's macros applied.
+        try {
+            await this.preambleFiles.reload();
+        } catch (err) {
+            logger.warn("preamble file preload failed:", err);
+        }
+        try {
+            this.engine.initialise();
+        } catch (err) {
+            logger.error("engine initialisation failed:", err);
+            new Notice("Latest MathJax: engine failed to start, see console for details.");
+        }
+        void this.refreshVersionReport();
+    }
+
+    /** Reloads the preamble file now; rendered surfaces refresh only if the content changed. */
+    async reloadPreambleFile(): Promise<boolean> {
+        return (await this.preambleFiles.reload()).changed;
+    }
+
+    private async reloadPreambleCommand(): Promise<void> {
+        const raw = this.settings.preambleFile.trim();
+        if (!raw) {
+            new Notice("Latest MathJax: no preamble file is configured.");
+            return;
+        }
+        const outcome = await this.preambleFiles.reload();
+        if (outcome.problem) {
+            new Notice(
+                `Latest MathJax: ${outcome.problem.source}: ${outcome.problem.message}`,
+            );
+            return;
+        }
+        new Notice(
+            outcome.changed
+                ? `Latest MathJax: preamble reloaded (${outcome.content.length} chars) and rendered surfaces refreshed.`
+                : "Latest MathJax: preamble file is unchanged.",
+        );
+    }
+
+    private async createPreambleFile(): Promise<void> {
+        const raw = this.settings.preambleFile.trim();
+        if (!raw) {
+            new Notice(
+                "Latest MathJax: set the 'Preamble file' setting to a vault-relative path first.",
+            );
+            return;
+        }
+        const normalized = normalizePreamblePath(raw);
+        if (normalized === null) {
+            new Notice(`Latest MathJax: "${raw}" is absolute; use a vault-relative path.`);
+            return;
+        }
+        const existing = this.app.vault.getAbstractFileByPath(normalized);
+        if (existing instanceof TFolder) {
+            new Notice(`Latest MathJax: "${normalized}" is a folder.`);
+            return;
+        }
+        if (existing) {
+            new Notice(`Latest MathJax: "${normalized}" already exists.`);
+            await this.openPreamblePath(normalized);
+            return;
+        }
+        try {
+            await this.ensurePreambleFolder(normalized);
+            await this.app.vault.create(normalized, PREAMBLE_TEMPLATE);
+            new Notice(`Latest MathJax: created "${normalized}".`);
+            await this.preambleFiles.reload();
+            await this.openPreamblePath(normalized);
+        } catch (err) {
+            logger.error("failed to create preamble file:", err);
+            new Notice(
+                `Latest MathJax: could not create "${normalized}": ` +
+                    `${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+    }
+
+    /** Creates every missing ancestor folder of `path` before the file itself is created. */
+    private async ensurePreambleFolder(path: string): Promise<void> {
+        const parts = path.split("/");
+        parts.pop(); // the file name itself
+        let prefix = "";
+        for (const part of parts) {
+            prefix = prefix ? `${prefix}/${part}` : part;
+            const existing = this.app.vault.getAbstractFileByPath(prefix);
+            if (existing instanceof TFolder) continue;
+            if (existing) throw new Error(`"${prefix}" exists but is not a folder`);
+            await this.app.vault.createFolder(prefix);
+        }
+    }
+
+    private async openPreambleFile(): Promise<void> {
+        const raw = this.settings.preambleFile.trim();
+        if (!raw) {
+            new Notice("Latest MathJax: no preamble file is configured.");
+            return;
+        }
+        const normalized = normalizePreamblePath(raw);
+        if (normalized === null) {
+            new Notice(`Latest MathJax: "${raw}" is absolute; use a vault-relative path.`);
+            return;
+        }
+        const abstract = this.app.vault.getAbstractFileByPath(normalized);
+        if (!abstract || abstract instanceof TFolder) {
+            new Notice(
+                `Latest MathJax: "${normalized}" not found — run "Create preamble file" first.`,
+            );
+            return;
+        }
+        await this.openPreamblePath(normalized);
+    }
+
+    private async openPreamblePath(path: string): Promise<void> {
+        try {
+            const abstract = this.app.vault.getAbstractFileByPath(path);
+            if (!(abstract instanceof TFile)) return;
+            const leaf = this.app.workspace.getLeaf("tab");
+            await leaf.openFile(abstract);
+        } catch (err) {
+            logger.error("failed to open preamble file:", err);
+            new Notice(
+                `Latest MathJax: could not open "${path}": ` +
+                    `${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
     }
 
     // ----------------------------------------------------------------- version

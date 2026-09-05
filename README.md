@@ -3,7 +3,7 @@
 Use a bundled, up-to-date **MathJax 4** engine for math rendering in Obsidian — without touching
 `window.MathJax` or Obsidian's built-in renderer.
 
-> Status: **0.1.4 is the current released and runtime-verified build.** Typecheck, 36 automated
+> Status: **0.1.5 is the current released and runtime-verified build.** Typecheck, 38 automated
 > tests, production build, isolated-vault desktop acceptance and PDF export from both editor modes
 > pass.
 > See [`docs/STATUS.md`](docs/STATUS.md) for the verification record and remaining surface limits.
@@ -53,8 +53,10 @@ MathJax** under **Settings → Community plugins**.
   the raw source shows while your cursor is inside a formula (inline gated by
   `Inline math in Live Preview`, default off). Live Preview takeover itself is also opt-in on a
   fresh install.
-- **TeX packages / macros / preamble** — toggle TeX packages and define a global preamble
-  (`\newcommand`, `\DeclareMathOperator`, …) in settings; macros apply across every note.
+- **TeX packages / macros / preamble** — toggle TeX packages, define a global preamble
+  (`\newcommand`, `\DeclareMathOperator`, …) in settings, or point the plugin at a
+  **preamble file** in your vault whose definitions are evaluated first and re-read
+  automatically when the file changes. Commands create, open and reload the file.
 - **Performance** — LRU formula cache + configurable render debounce for Live Preview.
 - **Renderer choice** — CommonHTML (New Computer Modern webfont, loaded from jsDelivr by default)
   or SVG (glyph paths embedded inline, no font download required — fully offline).
@@ -77,7 +79,7 @@ See [`docs/compatibility.md`](docs/compatibility.md) for the detail.
 ## Settings
 
 - **Engine**: renderer (CHTML / SVG), scale, font file location (CHTML only), TeX packages,
-  global preamble, assistive MathML.
+  preamble file (vault-relative path, optional) and global preamble, assistive MathML.
 - **Performance**: cache on/off + size, render debounce.
 - **Compatibility**: toggles for Reading View (on by default), Live Preview (off by default),
   Popout support (on by default), and the disabled planned Hover / Canvas surfaces.
@@ -103,7 +105,9 @@ stabilization through `1.0.0` is tracked in the detailed [`future roadmap`](docs
 | 0.1.1 | Automated CI and tag-driven releases | ✅ released |
 | 0.1.2 | Community-review fixes and provenance attestations | ✅ released |
 | 0.1.3 | Reading View lifecycle and deterministic PDF export fixes | ✅ released |
-| 0.1.4 | Settings compatibility and lifecycle stabilization | ✅ current release |
+| 0.1.4 | Settings compatibility and lifecycle stabilization | ✅ released |
+| 0.1.5 | Capability-guarded settings refresh APIs for Obsidian 1.13 | ✅ current release |
+| 0.2.0 | Vault-based preamble workflow | 🔨 in development |
 
 ## Development
 

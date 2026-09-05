@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
-    extractDisplayMath,
     escapeUnsafeDollarDelimiters,
+    extractDisplayMath,
     findMathInSection,
     findMathRanges,
+    lastMathDollarIndex,
     textForSection,
 } from "../src/utils/mathSource";
+
+describe("lastMathDollarIndex", () => {
+    it("anchors at the last dollar outside code spans", () => {
+        const text = "It costs $5, while $x^2$ is math. Inline code `$not_math$`.";
+        expect(lastMathDollarIndex(text)).toBe(text.indexOf("$x^2$") + "$x^2$".length - 1);
+    });
+
+    it("returns -1 when every dollar lives inside code", () => {
+        expect(lastMathDollarIndex("Only `$code$` here.")).toBe(-1);
+        expect(lastMathDollarIndex("no dollars")).toBe(-1);
+    });
+});
 
 describe("findMathInSection", () => {
     it("recovers block and inline math in order", () => {

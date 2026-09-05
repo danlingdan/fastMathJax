@@ -15,6 +15,7 @@ import {
     configHash,
     defaultEngineConfig,
     needsRebuild,
+    type PreambleSegment,
 } from "./MathJaxConfig";
 import { resolvePackages } from "./packages";
 import { renderCacheKey } from "../utils/hash";
@@ -26,6 +27,12 @@ import {
 
 export interface RenderOptions {
     display: boolean;
+}
+
+/** A parse failure in one labeled part of the preamble; rendering continues regardless. */
+export interface PreambleProblem {
+    source: string;
+    message: string;
 }
 
 export interface EngineStats {
@@ -46,6 +53,26 @@ export class MathRenderError extends Error {
         super(message);
         this.name = "MathRenderError";
     }
+}
+
+/**
+ * Human-readable message for anything MathJax throws.
+ *
+ * MathJax signals "needs async work" (dynamic font chunks, lazy packages) by throwing plain
+ * objects rather than Errors, so `String(err)` would log "[object Object]" and hide the cause.
+ */
+export function describeMathError(err: unknown): string {
+    if (err instanceof Error) return err.message;
+    if (typeof err === "object" && err !== null) {
+        const message = (err as { message?: unknown }).message;
+        if (typeof message === "string" && message !== "") return message;
+        try {
+            return JSON.stringify(err);
+        } catch {
+            // Circular structure — fall through to String().
+        }
+    }
+    return String(err);
 }
 
 const STYLE_ELEMENT_ID = "latest-mathjax-chtml-styles";
@@ -88,7 +115,7 @@ export class MathJaxEngine {
     private cache: MathCache;
     private renders = 0;
     private configRevision = 0;
-    private preambleError: string | null = null;
+    private preambleProblemList: PreambleProblem[] = [];
 
     constructor(
         config?: Partial<EngineConfig>,
@@ -112,9 +139,14 @@ export class MathJaxEngine {
         return this.configRevision;
     }
 
-    /** Non-fatal problem found while evaluating the user's preamble, if any. */
+    /** Non-fatal problems found while evaluating the user's preamble, in evaluation order. */
+    get preambleProblems(): PreambleProblem[] {
+        return [...this.preambleProblemList];
+    }
+
+    /** First preamble problem, if any — kept for callers that show a single message. */
     get preambleProblem(): string | null {
-        return this.preambleError;
+        return this.preambleProblemList[0]?.message ?? null;
     }
 
     initialise(): void {
@@ -183,8 +215,6 @@ export class MathJaxEngine {
         this.configRevision++;
         this.cache.clear();
         this.renders = 0;
-        this.preambleError = null;
-
         this.applyPreamble();
         // Create and attach the stylesheet immediately: CHTML adds later rules through
         // `sheet.insertRule`, which silently no-ops unless the <style> is in the document.
@@ -196,18 +226,34 @@ export class MathJaxEngine {
     }
 
     /**
-     * Evaluates the global preamble once so its \newcommand / \DeclareMathOperator definitions land
-     * in the TeX parser's persistent macro table. The output is thrown away.
+     * Evaluates the preamble once so its \newcommand / \DeclareMathOperator definitions land in
+     * the TeX parser's persistent macro table. The output is thrown away.
+     *
+     * With segments, each labeled part is evaluated separately and in order, so a failure in one
+     * part is reported for that part and later parts still apply. Without segments the whole
+     * preamble is evaluated as one unit, exactly as before 0.2.0.
      */
     private applyPreamble(): void {
         const preamble = this.config.preamble.trim();
         if (!preamble || !this.doc) return;
-        try {
-            this.doc.convert(preamble, { display: true, ...this.metrics() });
-            logger.debug(`preamble applied (${preamble.length} chars)`);
-        } catch (err) {
-            this.preambleError = err instanceof Error ? err.message : String(err);
-            logger.warn("preamble failed:", this.preambleError);
+        const segments: PreambleSegment[] = this.config.preambleSegments?.length
+            ? this.config.preambleSegments
+            : [{ source: "preamble", text: preamble }];
+        this.preambleProblemList = [];
+
+        for (const segment of segments) {
+            const text = segment.text.trim();
+            if (!text) continue;
+            try {
+                this.doc.convert(text, { display: true, ...this.metrics() });
+                logger.debug(`preamble segment applied: ${segment.source}`);
+            } catch (err) {
+                this.preambleProblemList.push({
+                    source: segment.source,
+                    message: describeMathError(err),
+                });
+                logger.warn(`preamble segment failed (${segment.source}):`, err);
+            }
         }
     }
 
@@ -254,7 +300,7 @@ export class MathJaxEngine {
             logger.debug(`cache miss ${key} — rendered`);
             return node;
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = describeMathError(err);
             logger.debug(`render error for "${tex.slice(0, 60)}": ${message}`);
             throw new MathRenderError(message, tex, options.display, err);
         }
@@ -294,8 +340,7 @@ export class MathJaxEngine {
             this.scheduleStyleFlush();
             return node;
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            throw new MathRenderError(message, tex, options.display, err);
+            throw new MathRenderError(describeMathError(err), tex, options.display, err);
         }
     }
 

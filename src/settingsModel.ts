@@ -4,6 +4,7 @@ import {
     type EngineConfig,
     type RendererKind,
 } from "./engine/MathJaxConfig";
+import { buildPreambleSegments, mergePreambles } from "./preamble/preambleModel";
 
 export type FallbackMode = "raw" | "obsidian" | "error";
 
@@ -11,6 +12,12 @@ export interface LatestMathJaxSettings {
     renderer: RendererKind;
     packages: string[];
     preamble: string;
+    /**
+     * Vault-relative path of an optional preamble file whose definitions are evaluated before
+     * `preamble`. Empty string = disabled. Only the path is persisted; the content is loaded
+     * into plugin state at runtime.
+     */
+    preambleFile: string;
     fontURL: string;
     scale: number;
     fontSize: number;
@@ -33,6 +40,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     renderer: "chtml",
     packages: defaultEnabledPackages(),
     preamble: "",
+    preambleFile: "",
     fontURL: DEFAULT_FONT_URL,
     scale: 1,
     fontSize: 16,
@@ -82,6 +90,7 @@ export function normalizeSettings(
         stored.fallbackMode === "error"
     ) settings.fallbackMode = stored.fallbackMode;
     if (typeof stored.preamble === "string") settings.preamble = stored.preamble;
+    if (typeof stored.preambleFile === "string") settings.preambleFile = stored.preambleFile.trim();
     if (typeof stored.fontURL === "string" && stored.fontURL.trim()) {
         settings.fontURL = stored.fontURL.trim();
     }
@@ -113,11 +122,28 @@ export function normalizeSettings(
     return settings;
 }
 
-export function toEngineConfig(settings: LatestMathJaxSettings): EngineConfig {
+/**
+ * Maps settings (plus the runtime-loaded preamble file content) onto the engine config.
+ *
+ * The file text is evaluated first and the inline settings preamble second, so the merge order
+ * in `EngineConfig.preamble` matches evaluation order. Callers that only have settings (no
+ * preamble file) keep getting exactly the pre-0.2.0 config.
+ */
+export function toEngineConfig(
+    settings: LatestMathJaxSettings,
+    filePreamble = "",
+): EngineConfig {
+    const filePath = settings.preambleFile.trim();
+    const preamble = mergePreambles(filePreamble, settings.preamble);
     return {
         renderer: settings.renderer,
         packages: settings.packages,
-        preamble: settings.preamble,
+        preamble,
+        // Only carry segments when a file actually contributes one; otherwise the engine keeps
+        // evaluating the inline text as a single unlabeled unit.
+        ...(filePath && filePreamble.trim()
+            ? { preambleSegments: buildPreambleSegments(filePreamble, settings.preamble, filePath) }
+            : {}),
         fontSize: settings.fontSize,
         scale: settings.scale,
         fontURL: settings.fontURL,

@@ -3,6 +3,43 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased (0.2.0 target)
+
+- Added an optional vault-relative **preamble file** setting: its TeX definitions are evaluated
+  before the inline settings preamble in every formula across the vault, and the file is re-read
+  automatically after vault edits (debounced, once per edit burst).
+- Defined the deterministic file/inline merge order (file first, inline second, so the inline
+  preamble can override file macros with `\renewcommand`); inline-only setups render exactly as
+  in 0.1.x.
+- Added **Create preamble file**, **Open preamble file** and **Reload preamble** commands that
+  report success or a concise actionable failure, including missing ancestor folder creation.
+- Improved preamble diagnostics: TeX parse failures are attributed to their source (vault file
+  path or settings preamble) while the previously valid renderer keeps working; missing folders,
+  missing files, folder-typed paths and absolute paths produce visible, non-fatal errors.
+- Made preamble lifecycle cleanup explicit: the debounced reload timer and vault listeners are
+  removed on plugin unload and no stale reload can outlive the engine.
+- Fixed a Reading View race (present since 0.1.x, exposed by cold font caches): taking over a
+  formula before Obsidian finished its own asynchronous math render let Obsidian's completion
+  callback re-typeset the plugin's markup and replace the formula with an error block. The
+  Reading View adapter now waits, bounded, for Obsidian's `is-loaded` finalization and skips
+  wrappers that never settle.
+- Fixed currency-like dollar text being lost in Reading View and PDF export (present since
+  0.1.x): the paragraph-repair locator anchored its suffix at the last `$` of the block —
+  including dollars inside inline code — so a trailing code span made the match unsatisfiable
+  and the repair silently never ran. The locator now anchors outside code spans and compares
+  against backtick-stripped text; sections Obsidian may have mis-paired no longer have their
+  inline math replaced wholesale, which could previously swallow the paired-away text.
+- PDF export now re-renders inline math per source block instead of pairing against the whole
+  note at once. Previously, one currency paragraph could make the note-level wrapper count
+  disagree with the scanner and silently drop every inline formula in the export back to
+  Obsidian's built-in renderer; blocks now pair independently, so the bundled engine (and its
+  preamble macros) applies to all of them.
+- Render errors now report the real MathJax message (for example `Undefined control sequence
+  \XX`) instead of `[object Object]` when MathJax signals retry-need via plain objects.
+- Expanded the automated suite to 80 tests covering path normalization, merge determinism,
+  watcher debouncing, engine segment diagnostics, math finalization waits, paragraph-locator
+  anchoring, per-block PDF export planning and 0.1.x settings migration.
+
 ## 0.1.5 - 2026-08-24
 
 - Kept the declared Obsidian 1.8 compatibility floor while capability-checking the settings-tab

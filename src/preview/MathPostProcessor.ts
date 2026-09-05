@@ -9,6 +9,8 @@ import {
     findMathInSection,
     textForSection,
 } from "../utils/mathSource";
+import { waitForSettledMath } from "./mathSettle";
+import { planInlineBlocks, uniqueParagraphForBlock } from "./paragraphLocator";
 import { logger } from "../utils/logger";
 import { createFallbackElement } from "../render/fallback";
 
@@ -47,9 +49,24 @@ export function createReadingViewProcessor(
 
         const handleInline = plugin.settings.enableInlineReadingView;
 
-        const blockNodes = collect(element, "block");
-        const inlineNodes = handleInline ? collect(element, "inline") : [];
+        let blockNodes = collect(element, "block");
+        let inlineNodes = handleInline ? collect(element, "inline") : [];
         if (blockNodes.length === 0 && inlineNodes.length === 0) return;
+
+        if (!pdfExport) {
+            // Obsidian commits its own math output asynchronously. Taking over an unsettled
+            // wrapper lets its completion callback run over our node and replace the formula
+            // with an error block, so wait — bounded — and only take over settled wrappers.
+            const settled = new Set(
+                await waitForSettledMath([...blockNodes, ...inlineNodes]),
+            );
+            blockNodes = blockNodes.filter((node) => settled.has(node));
+            inlineNodes = inlineNodes.filter((node) => settled.has(node));
+            if (blockNodes.length === 0 && inlineNodes.length === 0) {
+                logger.debug("Reading View: math not settled, leaving Obsidian output in place");
+                return;
+            }
+        }
 
         const sourceText = await sourceForElement(plugin, element, context, pdfExport);
         if (sourceText === null) {
@@ -63,19 +80,88 @@ export function createReadingViewProcessor(
         const blockTex = sources.filter((s) => s.display);
         const inlineTex = sources.filter((s) => !s.display);
 
+        // A section whose text needed dollar escaping is one Obsidian may have mis-paired: an
+        // inline wrapper can span text our scanner never accepted, and replacing its contents
+        // would destroy note text (e.g. "It costs $5 and $6" losing "$5 and $6"). Leave those
+        // wrappers to the whole-paragraph repair below, which re-renders from sanitized source.
+        // PDF export always goes through the per-block path below instead.
+        const currencyRisk = escapeUnsafeDollarDelimiters(sourceText) !== sourceText;
+
         await Promise.all([
             rerender(plugin, blockNodes, blockTex, true, pdfExport),
-            rerender(plugin, inlineNodes, inlineTex, false, pdfExport),
+            pdfExport || currencyRisk
+                ? Promise.resolve()
+                : rerender(plugin, inlineNodes, inlineTex, false, pdfExport),
         ]);
 
-        await repairDollarParagraphs(
-            plugin,
-            element,
-            sourceText,
-            context.sourcePath,
-            pdfExport,
-        );
+        if (pdfExport) {
+            await rerenderInlineBlocksForPdf(plugin, element, sourceText, context.sourcePath);
+        } else {
+            await repairDollarParagraphs(
+                plugin,
+                element,
+                sourceText,
+                context.sourcePath,
+                pdfExport,
+            );
+        }
     };
+}
+
+/**
+ * Re-renders inline math block by block in the PDF export document.
+ *
+ * The print DOM hands us the whole note with no section metadata, and its wrapper count for a
+ * currency paragraph can disagree with our scanner — a single disagreement used to fail every
+ * inline formula at note level. Each block (planned by `planInlineBlocks`) is located by its
+ * paragraph text, re-rendered alone in staging where pairing is 1:1, and swapped in; a block
+ * that cannot be located or paired keeps Obsidian's output without touching the rest.
+ */
+async function rerenderInlineBlocksForPdf(
+    plugin: LatestMathJaxPlugin,
+    element: HTMLElement,
+    sourceText: string,
+    sourcePath: string,
+): Promise<void> {
+    for (const plan of planInlineBlocks(sourceText)) {
+        const target = uniqueParagraphForBlock(element, plan.markdown);
+        if (!target) {
+            logger.debug(
+                "PDF export: paragraph for an inline-math block not found; keeping built-in output",
+            );
+            continue;
+        }
+
+        const staging = element.ownerDocument.createElement("div");
+        const component = new Component();
+        component.load();
+        try {
+            await MarkdownRenderer.render(
+                plugin.app,
+                plan.renderMarkdown,
+                staging,
+                sourcePath,
+                component,
+            );
+            const wrappers = Array.from(
+                staging.querySelectorAll<HTMLElement>(".math.math-inline"),
+            );
+            if (wrappers.length !== plan.sources.length) {
+                logger.debug(
+                    `PDF export: block inline mismatch (${wrappers.length} wrappers, ` +
+                        `${plan.sources.length} sources); keeping built-in output`,
+                );
+                continue;
+            }
+            await rerender(plugin, wrappers, plan.sources, false, true);
+            const replacement = staging.querySelector("p");
+            if (replacement) target.replaceWith(replacement);
+        } catch (error) {
+            logger.warn("PDF export: failed to re-render an inline block:", error);
+        } finally {
+            component.unload();
+        }
+    }
 }
 
 async function repairDollarParagraphs(
@@ -147,23 +233,6 @@ async function repairDollarParagraphs(
             component.unload();
         }
     }
-}
-
-function uniqueParagraphForBlock(element: HTMLElement, markdown: string): HTMLElement | null {
-    const firstDollar = markdown.indexOf("$");
-    const lastDollar = markdown.lastIndexOf("$");
-    if (firstDollar < 0 || lastDollar < firstDollar) return null;
-
-    const normalize = (value: string): string => value.replace(/\s+/gu, " ").trim();
-    const prefix = normalize(markdown.slice(0, firstDollar));
-    const suffix = normalize(markdown.slice(lastDollar + 1));
-    if (prefix.length < 4 && suffix.length < 4) return null;
-
-    const candidates = Array.from(element.querySelectorAll<HTMLElement>("p")).filter((paragraph) => {
-        const text = normalize(paragraph.textContent ?? "");
-        return (!prefix || text.startsWith(prefix)) && (!suffix || text.endsWith(suffix));
-    });
-    return candidates.length === 1 ? candidates[0] : null;
 }
 
 async function sourceForElement(

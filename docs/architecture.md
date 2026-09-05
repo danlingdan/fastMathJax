@@ -8,6 +8,8 @@ The plugin owns a module-scoped MathJax 4.1.3 engine. It never deletes or overwr
 
 `MathJaxEngine` builds a private MathJax document for CommonHTML or SVG output. TeX packages and the global preamble are applied at construction time. Rendered nodes are cloned from an LRU cache, adopted into the target document and marked with the engine version. Output-configuration changes advance an engine revision so mounted surfaces refresh safely.
 
+The preamble may combine a vault file with the inline settings text. Pure helpers (`src/preamble/preambleModel.ts`) normalize the configured path and merge the two texts deterministically — file first, inline second — and the engine evaluates the merged preamble as labeled segments, so a parse failure is reported against the file or the settings text it came from while earlier definitions stay applied. `PreambleFileService` (Obsidian-free, dependency-injected) turns vault create/modify/delete/rename events into one debounced reload per edit burst and computes precise read diagnostics (missing file vs. folder vs. absolute path); the plugin owns all vault access and registers its listeners through `registerEvent` so teardown removes everything.
+
 All New Computer Modern dynamic chunks for both output modes are statically imported. This makes the single-file Obsidian bundle self-contained and prevents runtime module-loading failures for less common glyphs. CommonHTML still uses the configured webfont URL; SVG embeds glyph paths and is fully offline.
 
 ## Reading View

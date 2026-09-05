@@ -144,6 +144,21 @@ export function findMathInSection(text: string): RecoveredMath[] {
 }
 
 /**
+ * Index of the last `$` that is not part of an inline code span or fenced code block, or -1.
+ *
+ * Dollars inside code spans render as literal text, so they must never anchor a math suffix:
+ * anchoring at them made the paragraph-repair locator compare against a backtick-bearing suffix
+ * that rendered text can never match (currency text was silently left mangled, since 0.1.x).
+ */
+export function lastMathDollarIndex(text: string): number {
+    const ignored = ignoredCodeRanges(text);
+    for (let i = text.length - 1; i >= 0; i--) {
+        if (text[i] === "$" && !ignored[i]) return i;
+    }
+    return -1;
+}
+
+/**
  * Escapes dollar signs that the conservative scanner did not accept as math delimiters.
  *
  * Obsidian's PDF parser can interpret currency-like text such as `$5 and $6, while $x$` as one

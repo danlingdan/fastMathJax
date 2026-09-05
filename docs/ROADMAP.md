@@ -39,6 +39,8 @@ review findings without introducing a new configuration model.
 | REG-01 | P0 | Preserve Reading View during repeated view switching and plugin reload | S | ✅ Delivered in 0.1.3: original Obsidian formula DOM is restored synchronously before teardown |
 | REG-02 | P0 | Preserve correct radicals and extensible symbols | S | Regression fixtures cover roots, arrows, matrices and dynamic New Computer Modern glyph chunks |
 | REG-03 | P0 | Prevent stale Live Preview teardown from overwriting a newer render | S | ✅ Implemented for 0.1.4 with revision/DOM ownership checks and focused regression tests |
+| REG-04 | P0 | Take over Reading View math only after Obsidian's async render finalizes | S | ✅ Delivered on `main` for 0.2.0: adapters wait (bounded) for `is-loaded`; cold-start acceptance reproduced the 0.1.x race and verified the fix |
+| REG-05 | P0 | Keep currency-like dollar text intact on Obsidian 1.13 | M | ✅ Delivered on `main` for 0.2.0: repair locator anchors its suffix outside code spans and strips backticks before matching; currency-risky sections leave inline wrappers to whole-paragraph repair. Accepted on 1.13.7 in Reading View and PDF export |
 | SET-01 | P1 | Adopt searchable settings on Obsidian 1.13+ without raising the minimum app version | M | ✅ Implemented for 0.1.4 with declarative definitions plus the 1.8–1.12 imperative fallback |
 | LOG-01 | P2 | Keep opt-in diagnostics out of the normal console log channel | S | ✅ Implemented for 0.1.4 with `console.debug` regression coverage |
 | DOC-01 | P1 | Keep README, status, compatibility and changelog synchronized | S | Version, defaults, supported surfaces and release instructions match source and release metadata |
@@ -50,13 +52,13 @@ the current settings preamble backward-compatible.
 
 | ID | Priority | Work item | Estimate | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| PRE-01 | P0 | Add an optional vault-relative preamble file setting | M | Paths are normalized; missing folders and non-file targets produce a visible error without breaking rendering |
-| PRE-02 | P0 | Define deterministic file/inline merge behavior | S | Merge order is documented and tested; existing inline-only settings render exactly as before |
-| PRE-03 | P0 | Reload the preamble on vault file modification | M | A debounced watcher rebuilds the private engine once per edit burst and refreshes supported surfaces safely |
-| PRE-04 | P1 | Add create, open and reload preamble commands | M | Commands work from the command palette and report success or a concise actionable failure |
-| PRE-05 | P0 | Improve preamble diagnostics | M | Parse failures show the source, file path when applicable and MathJax error while the previous valid renderer remains usable |
-| PRE-06 | P0 | Make lifecycle cleanup explicit | S | File listeners, pending timers and stale engine revisions are removed on unload and configuration changes |
-| PRE-07 | P1 | Add settings migration and recovery tests | M | Upgrading from `0.1.x`, missing files, invalid TeX and reverting to inline-only configuration are covered |
+| PRE-01 | P0 | Add an optional vault-relative preamble file setting | M | ✅ Implemented for 0.2.0: paths are normalized (`src/preamble/preambleModel.ts`); missing files, folder targets and absolute paths produce a visible diagnostic without breaking rendering |
+| PRE-02 | P0 | Define deterministic file/inline merge behavior | S | ✅ Implemented for 0.2.0: file evaluated first, inline second (`mergePreambles`); merge order is unit-tested and inline-only settings keep the pre-0.2.0 engine config shape |
+| PRE-03 | P0 | Reload the preamble on vault file modification | M | ✅ Implemented for 0.2.0: `PreambleFileService` debounces vault events (create/modify/delete/rename) into one reload per edit burst and refreshes surfaces only when the content changed |
+| PRE-04 | P1 | Add create, open and reload preamble commands | M | ✅ Implemented for 0.2.0: Create (with missing ancestor folders), Open and Reload commands report success or a concise actionable failure via Notice |
+| PRE-05 | P0 | Improve preamble diagnostics | M | ✅ Implemented for 0.2.0: the engine evaluates labeled preamble segments, so parse failures report their source (file path or settings preamble); the previous valid renderer remains usable |
+| PRE-06 | P0 | Make lifecycle cleanup explicit | S | ✅ Implemented for 0.2.0: vault listeners use `registerEvent`, the debounced timer is cancelled on unload, and no stale reload outlives the engine |
+| PRE-07 | P1 | Add settings migration and recovery tests | M | ✅ Implemented for 0.2.0: 63-test suite covers 0.1.x migration (no `preambleFile` key), missing files, invalid TeX and reverting to inline-only configuration |
 | PKG-01 | P2 | Evaluate requested packages such as `bussproofs` | M | Compatibility, bundle impact and representative formulas are measured before any package is exposed in settings |
 
 ### `0.2.0` non-goals
