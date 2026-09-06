@@ -6,6 +6,9 @@ import { defaultEngineConfig } from "../src/engine/MathJaxConfig";
 
 const engines: MathJaxEngine[] = [];
 
+/** Both supported output renderers; the 0.4.0 compatibility matrix runs everything twice. */
+const RENDERERS = ["chtml", "svg"] as const;
+
 function engine(config = defaultEngineConfig()): MathJaxEngine {
     const instance = new MathJaxEngine(config, 10);
     engines.push(instance);
@@ -142,6 +145,139 @@ describe("MathJaxEngine", () => {
         expect(rendered.querySelector("latest-mjx-assistive-mml math")).not.toBeNull();
     });
 
+    it("toggling assistive MathML rebuilds and flips output presence", () => {
+        const instance = engine();
+        instance.initialise();
+        const disabled = instance.render("x+1", { display: false });
+        expect(disabled.querySelector("latest-mjx-assistive-mml")).toBeNull();
+
+        // enableAssistiveMml changes the DOM, so it must force a document rebuild.
+        const enabled = defaultEngineConfig();
+        enabled.enableAssistiveMml = true;
+        expect(instance.updateConfig(enabled)).toBe(true);
+        const enabledOutput = instance.render("x+1", { display: false });
+        expect(enabledOutput.querySelector("latest-mjx-assistive-mml math")).not.toBeNull();
+
+        expect(instance.updateConfig(defaultEngineConfig())).toBe(true);
+        expect(instance.render("x+1", { display: false }).querySelector("latest-mjx-assistive-mml"))
+            .toBeNull();
+    });
+
+    it.each(RENDERERS)(
+        "replaces — never stacks — the stylesheet on rebuild and keeps renamed glyph rules (%s)",
+        (renderer) => {
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            const instance = engine(config);
+            instance.initialise();
+            instance.render("x+1", { display: false });
+
+            // Any rebuild (renderer/package/preamble/assistive change) tears the document down
+            // and rebuilds the stylesheet. The new sheet must replace the old one — a stale thin
+            // sheet winning the cascade left rebuilt glyphs without their rules on desktop — and
+            // its live rules must be isolated again.
+            const toggled = defaultEngineConfig();
+            toggled.renderer = renderer;
+            toggled.enableAssistiveMml = true;
+            expect(instance.updateConfig(toggled)).toBe(true);
+            instance.render("y+2", { display: false });
+
+            const sheets = document.querySelectorAll("#latest-mathjax-chtml-styles");
+            expect(sheets).toHaveLength(1);
+            const live = (sheets[0] as HTMLStyleElement).sheet;
+            expect(live).not.toBeNull();
+            const selectors = Array.from(
+                live!.cssRules,
+                (r) => (r as CSSStyleRule).selectorText ?? "",
+            );
+            // CHTML renames glyph rules (latest-mjx-c), SVG its own wrappers; either way the
+            // sheet must carry renamed selectors, not only MathJax's raw mjx-* ones.
+            expect(selectors.some((s) => s.includes("latest-mjx-"))).toBe(true);
+        },
+    );
+
+    it.each(RENDERERS)(
+        "emits exactly one assistive MathML tree per cache hit in %s",
+        (renderer) => {
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            config.enableAssistiveMml = true;
+            const instance = engine(config);
+            const first = instance.render("x+1", { display: false });
+            const second = instance.render("x+1", { display: false });
+            expect(instance.stats).toMatchObject({ renders: 1, cache: { hits: 1, misses: 1 } });
+            expect(first).not.toBe(second);
+            for (const node of [first, second]) {
+                // No duplicated speech trees: one assistive container, one MathML root inside it.
+                expect(node.querySelectorAll("latest-mjx-assistive-mml, mjx-assistive-mml"))
+                    .toHaveLength(1);
+                const math = node.querySelector("latest-mjx-assistive-mml math");
+                expect(math).not.toBeNull();
+                expect(math?.ownerDocument).toBe(node.ownerDocument);
+            }
+            // The stored template stays intact for future clones.
+            const third = instance.render("x+1", { display: false });
+            expect(third.querySelector("latest-mjx-assistive-mml math")).not.toBeNull();
+        },
+    );
+
+    it.each(RENDERERS)(
+        "keeps semantic MathML children of the assistive tree in %s",
+        (renderer) => {
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            config.enableAssistiveMml = true;
+            const rendered = engine(config).render("x+1", { display: false });
+            const math = rendered.querySelector("latest-mjx-assistive-mml math");
+            expect(math).not.toBeNull();
+            const tags = Array.from(math?.querySelectorAll("mi, mo, mn") ?? [], (n) => n.tagName);
+            expect(tags).toEqual(["mi", "mo", "mn"]);
+            // Speech text is produced by the (unbundled) SRE pipeline, never duplicated inline.
+            expect(math?.querySelectorAll("[data-semantic-type], [data-speech]")).toHaveLength(0);
+        },
+    );
+
+    it.each(RENDERERS)(
+        "ships the visually-hidden clipping styles for the assistive container in %s",
+        (renderer) => {
+            // Without these rules the second (MathML) copy would paint on screen. MathJax marks
+            // the visual output aria-hidden and hides the assistive container with a 1px clip;
+            // our isolation renames the element, so the live rule must target the renamed
+            // selector. (The element's textContent keeps MathJax's original text — only the
+            // parsed rule set is rewritten and applied.)
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            config.enableAssistiveMml = true;
+            engine(config).render("x+1", { display: false });
+            const sheet = document.getElementById("latest-mathjax-chtml-styles");
+            const rules = Array.from(sheet?.sheet?.cssRules ?? [], (rule) => rule as CSSStyleRule)
+                .filter((rule) => rule.selectorText?.includes("latest-mjx-assistive-mml"));
+            expect(rules.length).toBeGreaterThanOrEqual(2);
+            expect(rules.some((rule) => rule.cssText.includes("clip"))).toBe(true);
+            expect(rules.some((rule) => rule.selectorText?.includes('="block"'))).toBe(true);
+        },
+    );
+
+    it("stamps rendered output with the producing engine revision", () => {
+        const instance = engine();
+        const first = instance.render("x+1", { display: false });
+        expect(first.getAttribute("data-latest-mathjax-revision")).toBe(String(instance.revision));
+
+        // After a rebuild the revision advances, so adapters can tell the old markup from the
+        // new even though the bundled version string is unchanged. Cache clones keep the stamp.
+        const enabled = defaultEngineConfig();
+        enabled.enableAssistiveMml = true;
+        expect(instance.updateConfig(enabled)).toBe(true);
+        const second = instance.render("x+1", { display: false });
+        const cached = instance.render("x+1", { display: false });
+        expect(second.getAttribute("data-latest-mathjax-revision"))
+            .toBe(String(instance.revision));
+        expect(second.getAttribute("data-latest-mathjax-revision"))
+            .not.toBe(first.getAttribute("data-latest-mathjax-revision"));
+        expect(cached.getAttribute("data-latest-mathjax-revision"))
+            .toBe(String(instance.revision));
+    });
+
     it("adopts output and copies styles into a popout document", () => {
         const instance = engine();
         const popout = document.implementation.createHTMLDocument("popout");
@@ -166,5 +302,51 @@ describe("MathJaxEngine", () => {
 
         expect(printDocument.getElementById("latest-mathjax-chtml-styles")).toBe(copied);
         expect(copied?.textContent).toContain("latest-mathjax-print-probe");
+    });
+
+    describe("renderer compatibility matrix (COMP-01)", () => {
+        it.each(RENDERERS)("renders, caches and hands out clones in %s", (renderer) => {
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            const instance = engine(config);
+            const tex = String.raw`x^2 + \frac{1}{2} + \sqrt{\pi}`;
+            const first = instance.render(tex, { display: true });
+            const second = instance.render(tex, { display: true });
+            expect(first.tagName.toLowerCase()).toBe("mjx-container");
+            expect(first.getAttribute("data-latest-mathjax-engine")).toBe("4.1.3");
+            if (renderer === "svg") {
+                // SVG draws glyphs as paths; there is no text content to assert on.
+                expect(first.querySelector("svg path")).not.toBeNull();
+            } else {
+                expect(first.querySelector("latest-mjx-c.mjx-c221A")?.textContent).toBe("√");
+            }
+            expect(first).not.toBe(second);
+            expect(instance.stats).toMatchObject({ renders: 1, cache: { hits: 1, misses: 1 } });
+        });
+
+        it.each(RENDERERS)("surfaces TeX parse errors in %s", (renderer) => {
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            expect(() => engine(config).render(String.raw`\notARealCommand`, { display: false }))
+                .toThrow(MathRenderError);
+        });
+
+        it.each(RENDERERS)("applies preamble macros and adopts output into a popout in %s", (renderer) => {
+            const config = defaultEngineConfig();
+            config.renderer = renderer;
+            config.preamble = String.raw`\newcommand{\RR}{\mathbb{R}}`;
+            const instance = engine(config);
+            instance.initialise();
+            expect(instance.preambleProblem).toBeNull();
+            const popout = document.implementation.createHTMLDocument(`popout-${renderer}`);
+            const rendered = instance.renderInto(String.raw`x \in \RR`, { display: false }, popout);
+            expect(rendered.ownerDocument).toBe(popout);
+            expect(popout.getElementById("latest-mathjax-chtml-styles")).not.toBeNull();
+            if (renderer === "svg") {
+                expect(rendered.querySelector("svg path")).not.toBeNull();
+            } else {
+                expect(rendered.textContent).toContain("ℝ");
+            }
+        });
     });
 });

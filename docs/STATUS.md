@@ -1,7 +1,57 @@
 # Project status
 
-Latest MathJax `0.3.0` is released, desktop-accepted and runtime-verified. It remains
-desktop-only until a separate mobile acceptance pass is completed.
+Latest MathJax `0.4.0` is feature-complete and desktop-accepted; the tag build is the remaining
+step. It remains desktop-only until a separate mobile acceptance pass is completed.
+
+## 0.4.0 — compatibility and accessibility (release candidate, 2026-09-07)
+
+All actionable 0.4.0 roadmap items shipped, covered by the automated gates (136 tests across 19
+files, lint, typecheck, production build, release metadata validation) and desktop-accepted on
+Obsidian 1.13.7 (Windows).
+
+Compatibility matrix (COMP-01): the core engine paths — rendering and cache cloning, TeX parse
+errors, preamble macros, popout adoption and style copy — are automated for both CHTML and SVG in
+`tests/MathJaxEngine.test.ts`, and the matrix passed desktop acceptance across Reading View, opt-in
+Live Preview, fallback behavior and settings toggles in both renderers. The pass surfaced and fixed
+three real rendering defects:
+
+- **Stale Live Preview widgets after engine rebuilds** (deterministic, user-visible): the render
+  pass skipped wrappers by matching the bundled MathJax version string, which survives engine
+  rebuilds, so after toggling Assistive MathML, switching renderers, or changing packages/preamble,
+  formulas kept output from the superseded engine under the new stylesheet — flattened matrices,
+  overlapping arrow labels, missing glyph spacing. Rendered output now carries
+  `data-latest-mathjax-revision` and the Live Preview render-loop predicate matches version +
+  revision; the mutation-observer predicate keeps version-only matching so the plugin's own
+  replacements still suppress rescheduling (PERF-04 unchanged). Reading View was never affected
+  because its refresh rebuilds the section DOM — which is why the symptom looked instance-random.
+- **Stylesheet accumulation with a stale-cascade win**: MathJax regenerates its style element on
+  every refresh and the engine appended without removing the previous one; after a rebuild the thin
+  build-time sheet (written before any formula rendered) could win the cascade and strip rebuilt
+  formulas of their glyph rules. The newest sheet now replaces the previous one.
+- **Style flush starvation on occluded windows**: Electron pauses `requestAnimationFrame` for
+  occluded/unfocused windows, so post-rebuild formulas kept the thin startup stylesheet until
+  refocus. A ~200 ms timer fallback guarantees the flush lands regardless of window state.
+
+Accessibility (A11Y-01, A11Y-02): Assistive MathML (off by default) is pinned by tests to appear
+only when enabled, exactly once per formula including cache-hit clones, with semantic
+`mi/mo/mn` structure, no duplicated speech nodes (the SRE speech engine is intentionally not
+bundled), and the visually-hidden clipping rules verified under the renamed
+`latest-mjx-assistive-mml` selector in both renderers. Desktop-verified: 6/6 rendered containers
+carried exactly one hidden tree with no on-screen duplication. Keyboard/screen-reader expectations,
+verified environments and explicit limitations are documented in
+[`docs/accessibility.md`](accessibility.md).
+
+Distribution truthfulness (MOB-01 desktop side, MOB-02): `isDesktopOnly` stays `true` and is now
+guarded by a test; the desktop-side mobile feasibility analysis, the questions only devices can
+answer, and the full Android/iOS acceptance protocol are recorded in
+[`docs/mobile-spike.md`](mobile-spike.md). The device pass remains open pending hardware.
+
+Surface re-evaluation (COMP-02): Hover Preview and Canvas remain unsupported — the Obsidian
+1.13.1 public typings expose no canvas rendering API, and hover previews would require a third
+whole-note `sourcePath` fallback whose transient popover lifecycle cannot yet be bounded as
+tightly as PDF export. Decision and evidence: [`docs/compatibility.md`](compatibility.md).
+
+Release: pending tag `0.4.0`.
 
 ## 0.2.0 — preamble workflow (released 2026-09-06)
 

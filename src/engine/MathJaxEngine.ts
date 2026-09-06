@@ -79,6 +79,20 @@ export function describeMathError(err: unknown): string {
 const STYLE_ELEMENT_ID = "latest-mathjax-chtml-styles";
 
 /**
+ * Tags rendered output with the engine revision that produced it.
+ *
+ * The bundled version string alone cannot tell two engine builds apart (it survives rebuilds), but
+ * adapters must be able to recognize output from a superseded revision — after a rebuild the old
+ * markup no longer matches the active stylesheet or configuration. Cache clones carry the stamp
+ * too: `cloneNode(true)` copies attributes, and cache entries never outlive the revision that
+ * rendered them (`build()` clears the cache).
+ */
+function stampRevision(node: HTMLElement, engine: MathJaxEngine): void {
+    node.setAttribute("data-latest-mathjax-engine", mathjax.version);
+    node.setAttribute("data-latest-mathjax-revision", String(engine.revision));
+}
+
+/**
  * The HTML handler is global to *our* bundled copy of MathJax and may only be registered once.
  * Obsidian re-requires main.js when a plugin is re-enabled, but that is not guaranteed, so this
  * guards against a double registration leaving two handlers in the list.
@@ -113,6 +127,7 @@ export class MathJaxEngine {
         | null = null;
     private styleNode: HTMLStyleElement | null = null;
     private styleFlushHandle: number | null = null;
+    private styleFlushFallback: number | null = null;
     private cache: MathCache;
     private renders = 0;
     private configRevision = 0;
@@ -294,7 +309,7 @@ export class MathJaxEngine {
                 display: options.display,
                 ...this.metrics(),
             }) as HTMLElement;
-            node.setAttribute("data-latest-mathjax-engine", mathjax.version);
+            stampRevision(node, this);
             isolateOutput(node);
             this.renders++;
             this.cache.set(key, node);
@@ -336,7 +351,7 @@ export class MathJaxEngine {
                 display: options.display,
                 ...this.metrics(),
             })) as HTMLElement;
-            node.setAttribute("data-latest-mathjax-engine", mathjax.version);
+            stampRevision(node, this);
             isolateOutput(node);
             this.renders++;
             this.cache.set(key, node);
@@ -400,26 +415,51 @@ export class MathJaxEngine {
     /**
      * Batches stylesheet updates: CHTML's adaptive CSS grows as new glyphs appear, and pulling the
      * sheet after every single formula would be O(used glyphs) per formula.
+     *
+     * requestAnimationFrame alone is not enough: Electron pauses it for backgrounded/occluded
+     * windows, which would leave formulas rendered after a rebuild stuck with the thin build-time
+     * stylesheet until the window is focused again. A timer fallback guarantees the flush lands.
      */
     private scheduleStyleFlush(): void {
         if (this.styleFlushHandle !== null) return;
-        this.styleFlushHandle = window.requestAnimationFrame(() => {
+        this.styleFlushHandle = window.requestAnimationFrame(() => this.runStyleFlush());
+        this.styleFlushFallback = window.setTimeout(() => this.runStyleFlush(), 200);
+    }
+
+    private runStyleFlush(): void {
+        if (this.styleFlushHandle !== null) {
+            window.cancelAnimationFrame(this.styleFlushHandle);
             this.styleFlushHandle = null;
-            this.flushStyles();
-        });
+        }
+        if (this.styleFlushFallback !== null) {
+            window.clearTimeout(this.styleFlushFallback);
+            this.styleFlushFallback = null;
+        }
+        this.flushStyles();
     }
 
     private flushStyles(): void {
         if (!this.outputJax || !this.doc) return;
-        const sheet = this.outputJax.styleSheet(this.doc) as unknown as HTMLStyleElement;
-        if (this.styleNode !== sheet) {
-            this.styleNode = sheet;
-            sheet.id = STYLE_ELEMENT_ID;
-            document.head.appendChild(sheet);
-            // Now that it is connected, insert any pending adaptive rules.
-            this.outputJax.styleSheet(this.doc);
+        try {
+            const sheet = this.outputJax.styleSheet(this.doc) as unknown as HTMLStyleElement;
+            if (this.styleNode !== sheet) {
+                // Replace the previous sheet: MathJax regenerates the element on every call, and
+                // the newest one is the most complete (adaptive glyph rules accumulate between
+                // flushes). Appending without removing let superseded sheets pile up in <head>,
+                // and after an engine rebuild a partially-stale sheet could win the cascade and
+                // leave freshly rendered glyphs without their rules.
+                this.styleNode?.remove();
+                this.styleNode = sheet;
+                sheet.id = STYLE_ELEMENT_ID;
+                document.head.appendChild(sheet);
+                // Now that it is connected, insert any pending adaptive rules.
+                this.outputJax.styleSheet(this.doc);
+            }
+            if (sheet.sheet) isolateStyles(sheet.sheet.cssRules);
+        } catch (err) {
+            // A stylesheet problem must never take rendering down; the next flush retries.
+            logger.debug("stylesheet flush failed:", err);
         }
-        if (sheet.sheet) isolateStyles(sheet.sheet.cssRules);
     }
 
     /**
@@ -462,6 +502,10 @@ export class MathJaxEngine {
         if (this.styleFlushHandle !== null) {
             window.cancelAnimationFrame(this.styleFlushHandle);
             this.styleFlushHandle = null;
+        }
+        if (this.styleFlushFallback !== null) {
+            window.clearTimeout(this.styleFlushFallback);
+            this.styleFlushFallback = null;
         }
         this.styleNode?.remove();
         this.styleNode = null;

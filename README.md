@@ -27,7 +27,7 @@ ever touching `window.MathJax` or Obsidian's `renderMath()`**.
 ## Highlights
 
 - **Preamble files in your vault** — keep macros in a versioned `.tex` file; edits hot-reload and
-  apply across every note. *(new in 0.2.0)*
+  apply across every note.
 - **Reading View & Live Preview** — display and inline math taken over through public APIs only.
 - **Deterministic PDF export** — an isolated SVG print engine embeds glyph paths, so exports are
   pixel-stable and offline-safe from either editor mode.
@@ -35,6 +35,8 @@ ever touching `window.MathJax` or Obsidian's `renderMath()`**.
 - **Popout windows** — styled automatically, reusing the same render adapters.
 - **Macro diagnostics** — parse failures name the file or settings text they came from; the
   previous valid renderer keeps working.
+- **Accessibility option** — optional hidden MathML alongside every formula for screen readers,
+  off by default. *(new in 0.4.0)*
 - **Performance** — LRU formula cache and configurable render debounce for Live Preview.
 
 ## Getting started
@@ -75,9 +77,11 @@ exactly as before 0.2.0.
 | Live Preview | ✅ | public editor widgets + document positions (opt-in) |
 | Popout windows | ✅ | per-document style copy |
 | PDF export | ✅ | isolated SVG engine, deterministic output |
-| Hover Preview / Canvas | ❌ planned | no reliable public raw-TeX hook |
+| Hover Preview / Canvas | ❌ | re-evaluated against the public API in 0.4.0: no reliable public raw-TeX hook, canvas exposes none at all |
 
-Desktop only for now; a mobile acceptance pass is pending.
+Desktop only for now; a mobile acceptance pass is pending. See
+[`docs/compatibility.md`](docs/compatibility.md) for details and
+[`docs/accessibility.md`](docs/accessibility.md) for assistive-technology behavior.
 
 ## Settings
 

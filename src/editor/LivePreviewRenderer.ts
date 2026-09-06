@@ -12,6 +12,26 @@ const SOURCE_ATTR = "data-latest-mathjax-source";
 const DISPLAY_ATTR = "data-latest-mathjax-display";
 
 /**
+ * True when the wrapper already carries output rendered by this exact engine revision.
+ *
+ * The bundled version string alone is not enough: it survives engine rebuilds, so after a
+ * revision-bumping settings change (assistive MathML, renderer, packages, preamble) a wrapper
+ * holding the previous revision's output would be skipped forever — keeping markup rendered by
+ * the torn-down engine under the new engine's stylesheet. The observer-side `isHandled` predicate
+ * deliberately stays version-only: it answers "is this our output" for feedback suppression, not
+ * "is this output current".
+ */
+export function hasOutputAtRevision(
+    wrapper: HTMLElement,
+    version: string,
+    revision: number,
+): boolean {
+    return wrapper.querySelector(
+        `[data-latest-mathjax-engine="${version}"][data-latest-mathjax-revision="${revision}"]`,
+    ) !== null;
+}
+
+/**
  * Live Preview adapter that cooperates with Obsidian's editor widgets.
  *
  * Obsidian remains responsible for locating formulas, virtual scrolling, and showing source while
@@ -95,9 +115,7 @@ export class LivePreviewRenderer {
                     )) {
                         if (
                             wrapper.getAttribute(HANDLED_ATTR) === String(revision) ||
-                            wrapper.querySelector(
-                                `[data-latest-mathjax-engine="${plugin.engine.version}"]`,
-                            )
+                            hasOutputAtRevision(wrapper, plugin.engine.version, revision)
                         ) continue;
                         const source = this.sourceForWrapper(wrapper, ranges);
                         if (!source || (!source.display && !plugin.settings.enableInlineLivePreview)) {

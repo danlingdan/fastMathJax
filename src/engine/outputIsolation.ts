@@ -11,19 +11,30 @@ export function isolateOutput(container: HTMLElement): void {
     }
 }
 
-/** Rewrite selectors only: font names, URLs, glyph classes and SVG paths stay intact. */
+/**
+ * Rewrite selectors only: font names, URLs, glyph classes and SVG paths stay intact.
+ *
+ * A rule whose selectorText cannot be rewritten is left alone rather than failing the whole
+ * pass: an unrewritten rule simply stops matching our renamed elements, which is the isolation
+ * goal anyway. Chromium rejects selectorText writes on some rule types, and one throw would
+ * otherwise leave every later rule unrewritten.
+ */
 export function isolateStyles(rules: CSSRuleList): void {
     for (const rule of Array.from(rules)) {
-        if ("selectorText" in rule) {
-            const styleRule = rule as CSSStyleRule;
-            styleRule.selectorText = styleRule.selectorText.replace(
-                /(^|[\s>+~,(])mjx-([\w-]+)/g,
-                (_match, prefix: string, name: string) => name === "container"
-                    ? `${prefix}mjx-container[data-latest-mathjax-engine]`
-                    : `${prefix}latest-mjx-${name}`,
-            ).replace(/(\[data-latest-mathjax-engine\])\1+/g, "$1");
-        } else if ("cssRules" in rule) {
-            isolateStyles((rule as CSSGroupingRule).cssRules);
+        try {
+            if ("selectorText" in rule) {
+                const styleRule = rule as CSSStyleRule;
+                styleRule.selectorText = styleRule.selectorText.replace(
+                    /(^|[\s>+~,(])mjx-([\w-]+)/g,
+                    (_match, prefix: string, name: string) => name === "container"
+                        ? `${prefix}mjx-container[data-latest-mathjax-engine]`
+                        : `${prefix}latest-mjx-${name}`,
+                ).replace(/(\[data-latest-mathjax-engine\])\1+/g, "$1");
+            } else if ("cssRules" in rule) {
+                isolateStyles((rule as CSSGroupingRule).cssRules);
+            }
+        } catch {
+            // Leave this rule as MathJax wrote it.
         }
     }
 }

@@ -3,6 +3,42 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.0 - 2026-09-07
+
+- Fixed Live Preview formulas going stale after any settings change that rebuilds the engine
+  (Assistive MathML, renderer, packages, preamble): the render pass skipped wrappers by matching
+  the bundled MathJax version string, which survives rebuilds, so output from the superseded
+  engine stayed mounted under the new engine's stylesheet — flattened matrices, overlapping
+  arrow labels, missing glyph spacing. Rendered output now carries the producing engine revision
+  and the Live Preview skip predicate matches version + revision; the mutation-observer
+  predicate deliberately keeps version-only matching, so the plugin's own replacements still
+  suppress rescheduling (0.3.0 PERF-04 semantics unchanged).
+- Fixed the engine stylesheet accumulating in the document head: MathJax regenerates its style
+  element on every refresh and the engine appended the new one without removing the previous,
+  so sheets piled up with every batched flush — and after an engine rebuild a stale thin sheet
+  (written before any formula was rendered, missing glyph, table and spacing rules) could win
+  the CSS cascade and break rebuilt formulas' layout. The newest sheet now replaces the
+  previous one.
+- Fixed stylesheet updates starving while the Obsidian window is occluded or unfocused:
+  Electron pauses `requestAnimationFrame` for such windows, so formulas rendered after a
+  rebuild kept the thin startup stylesheet until the window was focused again. A timer
+  fallback now guarantees the flush lands within about 200 ms regardless of window state.
+- Completed the 0.4.0 compatibility and accessibility scope. Assistive MathML is pinned by
+  tests to appear only when enabled, exactly once per formula (including cache clones), with
+  the visually-hidden clipping rules verified in both renderers (A11Y-01). The core rendering
+  paths — render/cache cloning, TeX parse errors, preamble macros, popout adoption — are
+  covered for CHTML and SVG alike, and the matrix passed desktop acceptance on Obsidian 1.13.7
+  across Reading View, Live Preview, fallback and toggle behavior (COMP-01). Keyboard and
+  screen-reader expectations, verified environments and known limitations are documented in
+  `docs/accessibility.md` (A11Y-02). Hover Preview and Canvas were re-evaluated against the
+  Obsidian 1.13.1 public API and remain unsupported: canvas exposes no public rendering API at
+  all, and hover previews, while reachable through documented fields, would add a third
+  whole-note rendering path whose transient popover lifecycle cannot yet be bounded as tightly
+  as the PDF export path (COMP-02). `isDesktopOnly` is now guarded by a test to stay `true`
+  until a real device pass records the mobile acceptance matrix, and the desktop-side mobile
+  feasibility analysis plus the Android/iOS device protocol are documented in
+  `docs/mobile-spike.md` (MOB-01 desktop side, MOB-02).
+
 ## 0.3.0 - 2026-09-07
 
 - Fixed formulas rendering with broken layout (misplaced radical bars, floating glyph fragments,
