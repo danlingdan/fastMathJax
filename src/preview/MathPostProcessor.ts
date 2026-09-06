@@ -38,6 +38,9 @@ export function createReadingViewProcessor(
     plugin: LatestMathJaxPlugin,
 ): (element: HTMLElement, context: MarkdownPostProcessorContext) => Promise<void> {
     return async (element: HTMLElement, context: MarkdownPostProcessorContext) => {
+        // Invasive mode: Obsidian's own pipeline already renders every formula through the
+        // patched native entry point — a second pass here would only re-render its output.
+        if (plugin.invasiveActive) return;
         if (!plugin.settings.enableReadingView) return;
         const pdfExport = element.closest(".print") !== null;
         if (

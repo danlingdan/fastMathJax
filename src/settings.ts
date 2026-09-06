@@ -18,6 +18,7 @@ import {
 } from "./settingsModel";
 import { logger } from "./utils/logger";
 import { invokeModernSettingTabMethod } from "./settingsCompatibility";
+import { confirmInvasiveEnable } from "./invasive/InvasiveConfirmModal";
 
 export { DEFAULT_SETTINGS, normalizeSettings, toEngineConfig } from "./settingsModel";
 export type { FallbackMode, LatestMathJaxSettings } from "./settingsModel";
@@ -37,6 +38,26 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
     getSettingDefinitions(): SettingDefinitionItem[] {
         const packageKey = (id: string) => `package:${id}`;
         return [
+            {
+                type: "group",
+                heading: "Rendering mode",
+                items: [
+                    {
+                        name: "Invasive mode (experimental)",
+                        aliases: [
+                            "take over",
+                            "replace native MathJax",
+                            "full functionality",
+                            "hover preview",
+                            "embeds",
+                        ],
+                        desc: "Patch Obsidian's built-in MathJax so every rendering surface — " +
+                            "including hover previews, embeds and PDF export — renders with the " +
+                            "bundled MathJax 4. Off by default; enabling asks for confirmation.",
+                        render: (setting) => this.attachInvasiveToggle(setting),
+                    },
+                ],
+            },
             {
                 type: "group",
                 heading: "Engine",
@@ -247,7 +268,37 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         }
     }
 
+    /**
+     * The invasive-mode toggle is intentionally NOT wired through the declarative
+     * key/value plumbing: turning it on must pass the confirmation modal first, and turning
+     * it off must not. Both settings surfaces (1.13+ declarative and 1.8–1.12 imperative)
+     * attach it through this method so the behavior is identical.
+     */
+    private attachInvasiveToggle(setting: Setting): void {
+        setting.addToggle((toggle) => {
+            toggle.setValue(this.plugin.settings.invasiveMode).onChange((value) => {
+                void this.requestInvasiveMode(value).then(() => {
+                    // Sync the switch with the actual outcome: a cancelled confirmation or a
+                    // failed install leaves it off even if Obsidian flipped it on visually.
+                    toggle.setValue(this.plugin.settings.invasiveMode);
+                });
+            });
+        });
+    }
+
+    /** Applies an invasive-mode change: confirm before enabling, save, hot-switch. */
+    private async requestInvasiveMode(value: boolean): Promise<void> {
+        if (value === this.plugin.settings.invasiveMode) return;
+        if (value) {
+            const confirmed = await confirmInvasiveEnable(this.app);
+            if (!confirmed) return;
+        }
+        this.plugin.settings.invasiveMode = value;
+        await this.plugin.saveSettings();
+    }
+
     private compatibilityDefinitions(): SettingDefinition[] {
+        const invasive = this.plugin.invasiveActive;
         const surfaces: Array<[keyof LatestMathJaxSettings, string, string, boolean]> = [
             ["enableReadingView", "Reading View", "Re-renders display math with the bundled engine.", true],
             ["enableLivePreview", "Live Preview", "Takes over mounted math widgets in the editor.", true],
@@ -258,11 +309,11 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         return [
             ...surfaces.map(([key, name, desc, available]) => ({
                 name,
-                desc,
+                desc: invasive ? `${desc} Managed by invasive mode.` : desc,
                 control: {
                     type: "toggle" as const,
                     key,
-                    disabled: !available,
+                    disabled: !available || invasive,
                 },
             })),
             {
@@ -271,7 +322,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 control: {
                     type: "toggle",
                     key: "enableInlineReadingView",
-                    disabled: () => !this.plugin.settings.enableReadingView,
+                    disabled: () => invasive || !this.plugin.settings.enableReadingView,
                 },
             },
             {
@@ -280,7 +331,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 control: {
                     type: "toggle",
                     key: "enableInlineLivePreview",
-                    disabled: () => !this.plugin.settings.enableLivePreview,
+                    disabled: () => invasive || !this.plugin.settings.enableLivePreview,
                 },
             },
         ];
@@ -295,6 +346,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             // saveSettings re-reads the file when the preamble path changed and refreshes
             // surfaces only on a content change; a same-path edit never re-renders.
             "preambleFile",
+            // applyInvasiveMode (inside saveSettings) refreshes surfaces on an actual switch.
+            "invasiveMode",
         ].includes(key);
     }
 
@@ -380,8 +433,13 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         const notice = root.createDiv({ cls: "latest-mathjax-notice" });
         setIcon(notice.createSpan(), "info");
         notice.createSpan({
-            text: "Reading View, Live Preview and their popout-window variants are supported. " +
-                "Hover Preview and Canvas remain fail-closed and unsupported.",
+            text: this.plugin.invasiveActive
+                ? "Invasive mode is active: every rendering surface (including hover previews " +
+                  "and embeds) renders with the bundled engine, and the per-surface switches " +
+                  "below are idle."
+                : "Reading View, Live Preview and their popout-window variants are supported. " +
+                    "Hover Preview and Canvas remain fail-closed and unsupported — invasive " +
+                    "mode is the experimental path to full coverage.",
         });
     }
 
@@ -389,12 +447,34 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
+        this.renderRenderingModeSection(containerEl);
         this.renderEngineSection(containerEl);
         this.renderPackagesSection(containerEl);
         this.renderMacrosSection(containerEl);
         this.renderPerformanceSection(containerEl);
         this.renderCompatibilitySection(containerEl);
         this.renderDeveloperSection(containerEl);
+    }
+
+    // ----------------------------------------------------------- rendering mode
+
+    private renderRenderingModeSection(root: HTMLElement): void {
+        new Setting(root).setName("Rendering mode").setHeading();
+
+        new Setting(root)
+            .setName("Invasive mode (experimental)")
+            .setDesc(
+                "Patch Obsidian's built-in MathJax so every rendering surface — including " +
+                    "hover previews, embeds and PDF export — renders with the bundled " +
+                    "MathJax 4. Off by default; enabling asks for confirmation.",
+            )
+            .addToggle((toggle) => {
+                toggle.setValue(this.plugin.settings.invasiveMode).onChange((value) => {
+                    void this.requestInvasiveMode(value).then(() => {
+                        toggle.setValue(this.plugin.settings.invasiveMode);
+                    });
+                });
+            });
     }
 
     // ------------------------------------------------------------------ engine
@@ -698,11 +778,20 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
 
         this.renderCompatibilityNotice(root);
 
+        const invasive = this.plugin.invasiveActive;
         const surfaces: Array<[keyof LatestMathJaxSettings, string, string, boolean]> = [
-            ["enableReadingView", "Reading View", "Re-renders $$…$$ display math in Reading View with the bundled engine.", true],
-            ["enableLivePreview", "Live Preview", "Takes over math in the editor with the bundled engine.", true],
-            ["enablePopout", "Popout windows", "Math in detached windows. Reuses the Reading View / Live Preview adapters; CHTML styles are copied into the popout document automatically.", true],
-            ["enableHoverPreview", "Hover Preview", "Math inside hover popovers. Not supported yet — Obsidian does not expose the TeX source there (planned).", false],
+            ["enableReadingView", "Reading View", invasive
+                ? "Managed by invasive mode (every surface renders with the bundled engine)."
+                : "Re-renders $$…$$ display math in Reading View with the bundled engine.", true],
+            ["enableLivePreview", "Live Preview", invasive
+                ? "Managed by invasive mode (every surface renders with the bundled engine)."
+                : "Takes over math in the editor with the bundled engine.", true],
+            ["enablePopout", "Popout windows", invasive
+                ? "Math in detached windows. Invasive mode copies the engine stylesheet into the popout document automatically."
+                : "Math in detached windows. Reuses the Reading View / Live Preview adapters; CHTML styles are copied into the popout document automatically.", true],
+            ["enableHoverPreview", "Hover Preview", invasive
+                ? "Rendered through the patched native pipeline while invasive mode is on."
+                : "Math inside hover popovers. Not supported yet — Obsidian does not expose the TeX source there (planned).", false],
             ["enableCanvas", "Canvas", "Math inside canvas cards. Not supported yet — canvas cards bypass the markdown post-processor (planned).", false],
         ];
 
@@ -713,7 +802,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 .addToggle((toggle) =>
                     toggle
                         .setValue(this.plugin.settings[key] as boolean)
-                        .setDisabled(!available)
+                        .setDisabled(!available || invasive)
                         .onChange(async (value) => {
                             (this.plugin.settings[key] as boolean) = value;
                             await this.plugin.saveSettings();
@@ -731,7 +820,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             .addToggle((toggle) =>
                 toggle
                     .setValue(this.plugin.settings.enableInlineReadingView)
-                    .setDisabled(!this.plugin.settings.enableReadingView)
+                    .setDisabled(invasive || !this.plugin.settings.enableReadingView)
                     .onChange(async (value) => {
                         this.plugin.settings.enableInlineReadingView = value;
                         await this.plugin.saveSettings();
@@ -748,7 +837,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             .addToggle((toggle) =>
                 toggle
                     .setValue(this.plugin.settings.enableInlineLivePreview)
-                    .setDisabled(!this.plugin.settings.enableLivePreview)
+                    .setDisabled(invasive || !this.plugin.settings.enableLivePreview)
                     .onChange(async (value) => {
                         this.plugin.settings.enableInlineLivePreview = value;
                         await this.plugin.saveSettings();

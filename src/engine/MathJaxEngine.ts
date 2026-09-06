@@ -310,7 +310,7 @@ export class MathJaxEngine {
                 ...this.metrics(),
             }) as HTMLElement;
             stampRevision(node, this);
-            isolateOutput(node);
+            if (this.config.isolationEnabled) isolateOutput(node);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -352,7 +352,7 @@ export class MathJaxEngine {
                 ...this.metrics(),
             })) as HTMLElement;
             stampRevision(node, this);
-            isolateOutput(node);
+            if (this.config.isolationEnabled) isolateOutput(node);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -455,11 +455,24 @@ export class MathJaxEngine {
                 // Now that it is connected, insert any pending adaptive rules.
                 this.outputJax.styleSheet(this.doc);
             }
-            if (sheet.sheet) isolateStyles(sheet.sheet.cssRules);
+            if (sheet.sheet && this.config.isolationEnabled) {
+                isolateStyles(sheet.sheet.cssRules);
+            }
         } catch (err) {
             // A stylesheet problem must never take rendering down; the next flush retries.
             logger.debug("stylesheet flush failed:", err);
         }
+    }
+
+    /**
+     * The live stylesheet element backing this engine's output.
+     *
+     * Invasive mode hands this to Obsidian when its native pipeline asks for the CHTML
+     * stylesheet. The element is replaced (never mutated in place) on every flush, so callers
+     * must re-read this each time instead of holding the node. Null before the first build.
+     */
+    get stylesheet(): HTMLStyleElement | null {
+        return this.styleNode;
     }
 
     /**

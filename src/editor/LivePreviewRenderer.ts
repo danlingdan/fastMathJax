@@ -102,6 +102,9 @@ export class LivePreviewRenderer {
                 private renderMountedMath(): void {
                     const targetDocument = this.view.dom.ownerDocument;
                     if (
+                        // Invasive mode: the editor's own widgets render through the patched
+                        // native entry point; taking over their output would only redo the work.
+                        plugin.invasiveActive ||
                         !plugin.settings.enableLivePreview ||
                         !plugin.compatibility.canRender(targetDocument, plugin.settings.enablePopout)
                     ) return;

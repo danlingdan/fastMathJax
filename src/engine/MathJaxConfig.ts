@@ -50,6 +50,12 @@ export interface EngineConfig {
     fontURL: string;
     /** Emit MathML `data-semantic` markup and assistive attributes. */
     enableAssistiveMml: boolean;
+    /**
+     * Rewrite `mjx-*` output tags and stylesheet selectors into the plugin-private
+     * `latest-mjx-*` vocabulary (the 0.3.0 coexistence isolation). Invasive mode sets this to
+     * false: its output is the only MathJax vocabulary on the page, so renaming is dead weight.
+     */
+    isolationEnabled: boolean;
 }
 
 export function defaultEngineConfig(): EngineConfig {
@@ -61,6 +67,7 @@ export function defaultEngineConfig(): EngineConfig {
         scale: 1,
         fontURL: DEFAULT_FONT_URL,
         enableAssistiveMml: false,
+        isolationEnabled: true,
     };
 }
 
@@ -80,6 +87,7 @@ export function configHash(config: EngineConfig): string {
         config.scale.toString(),
         config.fontURL,
         config.enableAssistiveMml ? "a11y" : "",
+        config.isolationEnabled ? "isolated" : "",
     ];
     return fnv1a(parts.join("\u0000"));
 }
@@ -94,6 +102,7 @@ export function needsRebuild(a: EngineConfig, b: EngineConfig): boolean {
         a.renderer !== b.renderer ||
         a.preamble !== b.preamble ||
         a.enableAssistiveMml !== b.enableAssistiveMml ||
+        a.isolationEnabled !== b.isolationEnabled ||
         resolvePackages(a.packages).join(",") !==
             resolvePackages(b.packages).join(",")
     );

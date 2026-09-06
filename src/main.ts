@@ -36,6 +36,12 @@ import {
 } from "./engine/MathJaxConfig";
 import { logger } from "./utils/logger";
 import { buildVersionReport, type VersionReport } from "./utils/version";
+import {
+    INVASIVE_SOURCE_ATTR,
+    NativeMathBridge,
+} from "./invasive/NativeMathBridge";
+import { createInvasiveStyleSyncProcessor } from "./invasive/invasiveStyleSync";
+import { createFallbackElement } from "./render/fallback";
 
 const PREAMBLE_TEMPLATE = [
     "% Latest MathJax preamble file",
@@ -67,6 +73,10 @@ export default class LatestMathJaxPlugin extends Plugin {
     private appliedFontUrl: string | null = null;
     /** Set on unload; async font work checks it before touching state. */
     private disposed = false;
+    /** The native-MathJax bridge while invasive mode is applied; null otherwise. */
+    private bridge: NativeMathBridge | null = null;
+    /** True while Obsidian's native render entry points are patched (invasive mode live). */
+    invasiveActive = false;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -159,6 +169,10 @@ export default class LatestMathJaxPlugin extends Plugin {
         // safely re-render, so enabling it can never break a user's notes.
         this.registerMarkdownPostProcessor(createReadingViewProcessor(this));
 
+        // Invasive mode's style sync: never renders, only mirrors the engine stylesheet into
+        // popout documents. A cheap no-op while invasive mode is off.
+        this.registerMarkdownPostProcessor(createInvasiveStyleSyncProcessor(this));
+
         // Live Preview: cooperate with Obsidian's public editor widgets, replacing only their
         // rendered contents. Registered once; settings are read on every scheduled refresh.
         this.registerEditorExtension(new LivePreviewRenderer(this).getExtension());
@@ -190,6 +204,13 @@ export default class LatestMathJaxPlugin extends Plugin {
 
     onunload(): void {
         this.disposed = true;
+        // Restore the native renderer first so restoreNativeRendering() calls the unpatched
+        // original, then swap every formula we rendered back to built-in output (async, guarded).
+        const bridge = this.bridge;
+        bridge?.uninstall();
+        this.bridge = null;
+        this.invasiveActive = false;
+        if (bridge) this.restoreNativeRendering();
         // Restore Obsidian's own formula DOM before removing the stylesheet used by our output.
         // This must be synchronous: an async preview rerender can finish after the engine is gone.
         this.readingViewSnapshots.restoreAll();
@@ -227,6 +248,9 @@ export default class LatestMathJaxPlugin extends Plugin {
         // PDF uses a private SVG engine so export never depends on remote CHTML webfonts.
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
+        // Invasive mode is applied in this single funnel (not only in the settings UI) so
+        // console and programmatic callers get the same hot-switch behavior.
+        await this.applyInvasiveMode();
         if (rebuilt) logger.debug("engine reconfigured");
     }
 
@@ -347,6 +371,124 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.app.workspace.updateOptions();
     }
 
+    // ------------------------------------------------------------- invasive mode
+
+    /**
+     * Aligns the invasive-mode bridge with `settings.invasiveMode`. Called from the
+     * `saveSettings` funnel and from startup; a no-op when the state already matches.
+     *
+     * On install failure the setting is reverted (and re-persisted) so the persisted state and
+     * the runtime state never diverge — the plugin silently keeps coexistence mode with a
+     * one-time Notice explaining why.
+     */
+    private async applyInvasiveMode(): Promise<void> {
+        const desired = this.settings.invasiveMode;
+        if (desired === this.invasiveActive) return;
+
+        if (!desired) {
+            this.bridge?.uninstall();
+            this.bridge = null;
+            this.invasiveActive = false;
+            logger.debug("invasive mode: off");
+            this.refreshRenderedSurfaces();
+            return;
+        }
+
+        this.engine.initialise();
+        const bridge = new NativeMathBridge({
+            render: (tex, display) => this.invasiveRender(tex, display),
+            stylesheet: () => this.engine.stylesheet,
+        });
+        const result = await bridge.install();
+        if (!result.ok) {
+            new Notice(
+                "Latest MathJax: invasive mode is unavailable on this Obsidian build " +
+                    `(${result.reason}). Keeping the default coexistence mode.`,
+                8000,
+            );
+            this.settings.invasiveMode = false;
+            await this.saveData(this.settings);
+            return;
+        }
+        this.bridge = bridge;
+        this.invasiveActive = true;
+        logger.debug("invasive mode: on");
+        this.refreshRenderedSurfaces();
+    }
+
+    /**
+     * The render callback handed to the bridge — the stand-in for Obsidian's native
+     * `tex2chtml`. Returns null to let the bridge fall through to the native renderer
+     * (the "fall back to Obsidian" failure mode); never throws.
+     */
+    private invasiveRender(tex: string, display: boolean): HTMLElement | null {
+        // Obsidian's PDF export re-renders the whole note into a `.print` container; route it
+        // to the private SVG engine exactly like the coexistence adapters do (0.1.3 decision).
+        const pdfExport = document.querySelector(".print") !== null;
+        try {
+            const node = this.renderInto(tex, display, document, pdfExport);
+            // Lets unload hand the TeX back to the native renderer (the wrapper is the only
+            // place the source still exists — Obsidian never stores it in invasive mode).
+            node.setAttribute(INVASIVE_SOURCE_ATTR, tex);
+            return node;
+        } catch (err) {
+            logger.warn(`invasive mode: render failed for "${tex.slice(0, 60)}":`, err);
+            if (this.settings.fallbackMode === "obsidian") return null;
+            return createFallbackElement(
+                document,
+                this.settings.fallbackMode,
+                tex,
+                display,
+                err,
+            );
+        }
+    }
+
+    /**
+     * Copies the bundled engine's stylesheet into a popout document; called by the invasive
+     * style-sync post-processor after each render pass there. Honors the popout setting.
+     */
+    syncInvasiveStyles(targetDoc: Document): void {
+        if (!this.invasiveActive) return;
+        if (!this.compatibility.canRender(targetDoc, this.settings.enablePopout)) return;
+        this.engine.ensureStyles(targetDoc);
+    }
+
+    /**
+     * Unload-time restore for invasive mode. Obsidian never stored the TeX of formulas we
+     * rendered through the patched entry point, so the facade stamps it onto every container;
+     * here it is handed back to the now-unpatched native renderer. Fire-and-forget with
+     * connectivity guards: only wrappers that still hold *their* container are replaced.
+     */
+    private restoreNativeRendering(): void {
+        for (const targetDoc of this.renderedDocuments()) {
+            for (const container of Array.from(
+                targetDoc.querySelectorAll<HTMLElement>(`[${INVASIVE_SOURCE_ATTR}]`),
+            )) {
+                const tex = container.getAttribute(INVASIVE_SOURCE_ATTR);
+                const wrapper = container.closest(".math");
+                if (!tex || !wrapper) continue;
+                const display = wrapper.classList.contains("math-block");
+                void this.renderWithBuiltIn(tex, display)
+                    .then((node) => {
+                        if (!wrapper.isConnected || !wrapper.contains(container)) return;
+                        wrapper.replaceChildren(node);
+                    })
+                    .catch(() => undefined);
+            }
+        }
+    }
+
+    /** Host document plus the documents of every open leaf (popouts render markdown too). */
+    private renderedDocuments(): Document[] {
+        const docs = new Set<Document>([document]);
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            const containerEl = (leaf.view as { containerEl?: HTMLElement }).containerEl;
+            if (containerEl) docs.add(containerEl.ownerDocument);
+        });
+        return [...docs];
+    }
+
     // ---------------------------------------------------------------- preamble
 
     /**
@@ -393,6 +535,9 @@ export default class LatestMathJaxPlugin extends Plugin {
         // mode downloads in the background and re-applies the font URL on completion.
         void this.applyFontSource();
         void this.refreshVersionReport();
+        // Persisted invasive mode is applied after the engine exists; a failing install
+        // reverts the setting and stays in coexistence mode for this session.
+        if (this.settings.invasiveMode) await this.applyInvasiveMode();
     }
 
     /** Reloads the preamble file now; rendered surfaces refresh only if the content changed. */

@@ -305,3 +305,31 @@ mjx-container[data-latest-mathjax-engine][jax="CHTML"] {
     border-radius: var(--radius-s);
     padding: 0.15em 0.35em;
 }
+
+/* --- Invasive-mode confirmation dialog (1.0) ------------------------------ */
+
+.latest-mathjax-invasive-confirm .latest-mathjax-invasive-intro {
+    margin-bottom: 0.75em;
+}
+
+.latest-mathjax-invasive-confirm .latest-mathjax-invasive-heading {
+    font-weight: var(--font-semibold);
+    margin: 0.75em 0 0.25em;
+}
+
+.latest-mathjax-invasive-confirm .latest-mathjax-invasive-list {
+    margin: 0;
+    padding-inline-start: 1.25em;
+}
+
+.latest-mathjax-invasive-confirm .latest-mathjax-invasive-list li {
+    margin-bottom: 0.35em;
+}
+
+.latest-mathjax-invasive-confirm .latest-mathjax-invasive-buttons {
+    display: flex;
+    gap: 0.5em;
+    justify-content: flex-end;
+    margin-top: 1em;
+}
+

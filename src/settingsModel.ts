@@ -40,6 +40,13 @@ export interface LatestMathJaxSettings {
     enableHoverPreview: boolean;
     enableCanvas: boolean;
     enablePopout: boolean;
+    /**
+     * Invasive mode (1.0, experimental, default off): patch Obsidian's native MathJax entry
+     * points (`tex2chtml` / `chtmlStylesheet`) so every rendering surface — including hover
+     * previews, embeds and PDF export, which the coexistence adapters cannot reach — renders
+     * with the bundled engine. Toggling on is gated behind a confirmation dialog.
+     */
+    invasiveMode: boolean;
     fallbackMode: FallbackMode;
     debugMode: boolean;
 }
@@ -64,6 +71,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     enableHoverPreview: false,
     enableCanvas: false,
     enablePopout: true,
+    invasiveMode: false,
     fallbackMode: "obsidian",
     debugMode: false,
 };
@@ -78,6 +86,7 @@ const BOOLEAN_KEYS = [
     "enableHoverPreview",
     "enableCanvas",
     "enablePopout",
+    "invasiveMode",
     "debugMode",
 ] as const;
 
@@ -160,5 +169,8 @@ export function toEngineConfig(
         scale: settings.scale,
         fontURL: settings.fontURL,
         enableAssistiveMml: settings.enableAssistiveMml,
+        // Invasive mode is the only MathJax vocabulary on the page, so the coexistence tag
+        // renaming is disabled and MathJax's own `mjx-*` output ships untouched.
+        isolationEnabled: !settings.invasiveMode,
     };
 }
