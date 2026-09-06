@@ -13,6 +13,7 @@ describe("normalizeSettings", () => {
         const settings = normalizeSettings({
             renderer: "bad" as "svg",
             fallbackMode: "bad" as "raw",
+            fontSource: "bad" as "cdn",
             scale: 99,
             fontSize: -1,
             cacheSize: 12.6,
@@ -21,11 +22,17 @@ describe("normalizeSettings", () => {
         expect(settings).toMatchObject({
             renderer: "chtml",
             fallbackMode: "obsidian",
+            fontSource: "cdn",
             scale: 2,
             fontSize: 8,
             cacheSize: 13,
             renderDebounce: DEFAULT_SETTINGS.renderDebounce,
         });
+    });
+
+    it("accepts a valid font source", () => {
+        expect(normalizeSettings({ fontSource: "local" }).fontSource).toBe("local");
+        expect(normalizeSettings({}).fontSource).toBe(DEFAULT_SETTINGS.fontSource);
     });
 
     it("deduplicates known packages and restores required packages", () => {

@@ -8,6 +8,9 @@ import { buildPreambleSegments, mergePreambles } from "./preamble/preambleModel"
 
 export type FallbackMode = "raw" | "obsidian" | "error";
 
+/** Where CommonHTML woff2 glyph files come from. SVG output never fetches fonts. */
+export type FontSource = "cdn" | "local";
+
 export interface LatestMathJaxSettings {
     renderer: RendererKind;
     packages: string[];
@@ -19,6 +22,11 @@ export interface LatestMathJaxSettings {
      */
     preambleFile: string;
     fontURL: string;
+    /**
+     * CDN fetches woff2 files from the configured `fontURL` on use; `local` serves them from the
+     * on-disk cache in the plugin folder (`docs/offline-fonts.md`), ignoring `fontURL`.
+     */
+    fontSource: FontSource;
     scale: number;
     fontSize: number;
     enableAssistiveMml: boolean;
@@ -42,6 +50,7 @@ export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     preamble: "",
     preambleFile: "",
     fontURL: DEFAULT_FONT_URL,
+    fontSource: "cdn",
     scale: 1,
     fontSize: 16,
     enableAssistiveMml: false,
@@ -89,6 +98,9 @@ export function normalizeSettings(
         stored.fallbackMode === "raw" ||
         stored.fallbackMode === "error"
     ) settings.fallbackMode = stored.fallbackMode;
+    if (stored.fontSource === "cdn" || stored.fontSource === "local") {
+        settings.fontSource = stored.fontSource;
+    }
     if (typeof stored.preamble === "string") settings.preamble = stored.preamble;
     if (typeof stored.preambleFile === "string") settings.preambleFile = stored.preambleFile.trim();
     if (typeof stored.fontURL === "string" && stored.fontURL.trim()) {

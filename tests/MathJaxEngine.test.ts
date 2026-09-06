@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { MathJaxEngine, MathRenderError } from "../src/engine/MathJaxEngine";
-import { defaultEngineConfig } from "../src/engine/MathJaxConfig";
+import { DEFAULT_FONT_URL, defaultEngineConfig } from "../src/engine/MathJaxConfig";
 
 const engines: MathJaxEngine[] = [];
 
@@ -276,6 +276,40 @@ describe("MathJaxEngine", () => {
             .not.toBe(first.getAttribute("data-latest-mathjax-revision"));
         expect(cached.getAttribute("data-latest-mathjax-revision"))
             .toBe(String(instance.revision));
+    });
+
+    it("lists the font-face URLs of its stylesheet (FONT-01)", () => {
+        const instance = engine();
+        instance.initialise();
+        const urls = instance.getFontFaceUrls();
+        expect(urls.length).toBeGreaterThan(0);
+        expect(urls.every((url) => url.endsWith(".woff2"))).toBe(true);
+        expect(urls.some((url) => url.startsWith(DEFAULT_FONT_URL))).toBe(true);
+    });
+
+    it("keeps SVG output and its stylesheet free of font downloads (FONT-02)", () => {
+        const config = defaultEngineConfig();
+        config.renderer = "svg";
+        config.fontURL = "https://cdn.example.com/woff2";
+        const instance = engine(config);
+        const rendered = instance.render(
+            String.raw`\sqrt[3]{\frac{a}{b}}\xrightarrow{\text{lim}}\mathbb{R}`,
+            { display: true },
+        );
+        // SVG embeds glyph paths; neither the markup nor the flushed stylesheet may reference
+        // the configured font URL.
+        expect(rendered.outerHTML).not.toContain("cdn.example.com");
+        const sheet = document.getElementById("latest-mathjax-chtml-styles");
+        const text = sheet?.textContent ?? "";
+        expect(text).not.toContain("cdn.example.com");
+        expect(text).not.toContain('url("http');
+        expect(text).not.toContain("url(http");
+        // The one permitted font-face is MathJax's zero-width trick, embedded as a data URI —
+        // offline by construction. Any network font source would fail here.
+        const srcs = [...text.matchAll(/@font-face[^}]*?url\(([^)]+)\)/g)]
+            .map((m) => m[1].replaceAll('"', ""));
+        expect(srcs.length).toBeGreaterThanOrEqual(1);
+        expect(srcs.every((src) => src.startsWith("data:"))).toBe(true);
     });
 
     it("adopts output and copies styles into a popout document", () => {

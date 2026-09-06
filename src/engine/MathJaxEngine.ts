@@ -463,8 +463,21 @@ export class MathJaxEngine {
     }
 
     /**
-     * Ensures the engine's CHTML stylesheet is present in `targetDoc`.
+     * Distinct woff2 URLs referenced by the current stylesheet's `@font-face` rules.
      *
+     * The font-face set is static per font version, so this reflects the complete download set
+     * right after `build()`, before any formula renders. Returns basenames' source URLs; callers
+     * that need plain file names take the last path segment. Empty until the stylesheet exists.
+     */
+    getFontFaceUrls(): string[] {
+        const text = this.styleNode?.textContent ?? "";
+        return [...new Set(
+            Array.from(text.matchAll(/url\(["']?([^"')]+)["']?\)/g), (m) => m[1]),
+        )];
+    }
+
+    /**
+     * Ensures the engine's CHTML stylesheet is present in `targetDoc`.
      * The canonical stylesheet lives in the host window's `document`. A popout window is a *separate*
      * Document, so formulas rendered there would be unstyled without a local copy. Adapters call this
      * after rendering into a non-host document (e.g. a popout window's Reading View).

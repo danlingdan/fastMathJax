@@ -1,9 +1,38 @@
 # Project status
 
-Latest MathJax `0.4.0` is feature-complete and desktop-accepted; the tag build is the remaining
-step. It remains desktop-only until a separate mobile acceptance pass is completed.
+Latest MathJax `0.5.0` is feature-complete and desktop-accepted pending manual font verification;
+the tag build is the remaining step. It remains desktop-only until a separate mobile acceptance
+pass is completed.
 
-## 0.4.0 — compatibility and accessibility (release candidate, 2026-09-07)
+## 0.5.0 — offline font handling (release candidate, 2026-09-07)
+
+Scope narrowed by decision: 0.5.0 ships the font line only (FONT-01, FONT-02); the size and
+trust-boundary items (SIZE-01/02/03, SEC-01) returned to the roadmap backlog.
+
+FONT-01 (designed in [`docs/offline-fonts.md`](offline-fonts.md), then implemented): a new
+opt-in **Font source** setting. `CDN (default)` is the previous behavior — `@font-face` rules
+point at the configured font URL (jsDelivr by default, custom URLs still honored). `Local cache
+(offline)` downloads the woff2 set referenced by the engine's stylesheet (105 New Computer Modern
+files, ≈1.8 MB for font version 4.1.3) once into the plugin folder
+(`fonts/<font version>/`, keyed and cleaned per font version), integrity-checks each file by the
+`wOF2` magic bytes, records completions in a per-version manifest (interrupted runs resume), and
+serves the directory through Obsidian's `app://` resource protocol so CommonHTML renders full
+glyph shapes offline. Downloads come only from the pinned, version-keyed CDN source — never from
+user input — and a **Download fonts for offline use** command primes or repairs the cache on
+demand. While the cache is incomplete the engine stays on the CDN URL, so failure behavior
+degrades exactly as before: correct layout, system-fallback glyph shapes.
+
+FONT-02: a test pins that SVG output and its flushed stylesheet reference the configured font URL
+never, and that the only permitted font-face (MathJax's zero-width font) is an inline data URI —
+SVG remains the guaranteed no-download path.
+
+Gates: 145 tests across 20 files, lint, typecheck, production build, release metadata validation.
+Desktop font verification (local mode download, offline reload, airplane-mode SVG) is the manual
+step before tagging.
+
+Release: pending tag `0.5.0`.
+
+## 0.4.0 — compatibility and accessibility (released 2026-09-07)
 
 All actionable 0.4.0 roadmap items shipped, covered by the automated gates (136 tests across 19
 files, lint, typecheck, production build, release metadata validation) and desktop-accepted on
@@ -51,7 +80,7 @@ Surface re-evaluation (COMP-02): Hover Preview and Canvas remain unsupported —
 whole-note `sourcePath` fallback whose transient popover lifecycle cannot yet be bounded as
 tightly as PDF export. Decision and evidence: [`docs/compatibility.md`](compatibility.md).
 
-Release: pending tag `0.4.0`.
+Release: tag `0.4.0` built and published by GitHub Actions with provenance attestation.
 
 ## 0.2.0 — preamble workflow (released 2026-09-06)
 

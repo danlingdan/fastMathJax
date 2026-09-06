@@ -37,6 +37,8 @@ ever touching `window.MathJax` or Obsidian's `renderMath()`**.
   previous valid renderer keeps working.
 - **Accessibility option** — optional hidden MathML alongside every formula for screen readers,
   off by default. *(new in 0.4.0)*
+- **Offline fonts** — optional one-time download of the CommonHTML glyph set into the plugin
+  folder, so formulas keep full glyph shapes without network. *(new in 0.5.0)*
 - **Performance** — LRU formula cache and configurable render debounce for Live Preview.
 
 ## Getting started

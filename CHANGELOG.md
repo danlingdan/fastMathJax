@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.0 - 2026-09-07
+
+- Added an opt-in **local font cache** for CommonHTML output (FONT-01, designed in
+  `docs/offline-fonts.md`): a new **Font source** setting downloads the woff2 set referenced by
+  the engine's stylesheet (105 New Computer Modern files, ≈1.8 MB for font version 4.1.3) once
+  into the plugin folder and serves it through Obsidian's resource protocol, so CHTML formulas
+  keep full glyph shapes offline. Files are fetched only from the version-pinned CDN source
+  (never from user input), integrity-checked by the `wOF2` magic bytes, recorded in a per-version
+  manifest, and re-downloaded into a fresh version directory when the bundled font version
+  changes — superseded versions are cleaned up. CDN remains the default; the custom font
+  location setting keeps working in CDN mode. A **Download fonts for offline use** command
+  primes or repairs the cache on demand. SVG output never downloads fonts, now pinned by a test
+  that fails if the SVG stylesheet references anything but inline data-URI fonts (FONT-02).
+
 ## 0.4.0 - 2026-09-07
 
 - Fixed Live Preview formulas going stale after any settings change that rebuilds the engine

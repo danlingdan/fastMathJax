@@ -13,6 +13,7 @@ import { DEFAULT_FONT_URL } from "./engine/MathJaxConfig";
 import {
     normalizeSettings,
     type FallbackMode,
+    type FontSource,
     type LatestMathJaxSettings,
 } from "./settingsModel";
 import { logger } from "./utils/logger";
@@ -67,6 +68,18 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                             key: "fontURL",
                             placeholder: DEFAULT_FONT_URL,
                             disabled: () => this.plugin.settings.renderer === "svg",
+                        },
+                    },
+                    {
+                        name: "Font source",
+                        desc: "CDN fetches woff2 files from the network on use. Local cache " +
+                            "downloads them once into the plugin folder so CommonHTML renders " +
+                            "offline, and ignores the custom font location above. CommonHTML " +
+                            "only — SVG never needs fonts.",
+                        control: {
+                            type: "dropdown",
+                            key: "fontSource",
+                            options: { cdn: "CDN (default)", local: "Local cache (offline)" },
                         },
                     },
                     {
@@ -471,6 +484,25 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         this.plugin.refreshRenderedSurfaces();
                         this.display();
+                    }),
+            );
+
+        new Setting(root)
+            .setName("Font source")
+            .setDesc(
+                "CDN fetches woff2 files from the network on use. Local cache downloads them " +
+                    "once into the plugin folder so CommonHTML renders offline, and ignores the " +
+                    "custom font location above. CommonHTML only — SVG never needs fonts.",
+            )
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOption("cdn", "CDN (default)")
+                    .addOption("local", "Local cache (offline)")
+                    .setValue(this.plugin.settings.fontSource)
+                    .onChange(async (value) => {
+                        this.plugin.settings.fontSource = value as FontSource;
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
                     }),
             );
     }

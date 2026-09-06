@@ -95,25 +95,37 @@ synthetic formulas faster but destabilize Obsidian's virtual rendering are rejec
 | COMP-02 | P2 | Re-evaluate Hover Preview and Canvas public hooks | M | ✅ Evaluated for 0.4.0, both stay unsupported: the Obsidian 1.13.1 public typings expose no canvas rendering API at all, and hover previews — while reached by the post-processor with null section info — would require a third whole-note `sourcePath` fallback whose transient popover lifecycle cannot yet be bounded as tightly as PDF export. Decision and evidence recorded in [`docs/compatibility.md`](compatibility.md); revisit on a public canvas API or a designed hover lifecycle guard |
 | COMP-03 | P2 | Investigate PDF export behavior | M | ✅ Delivered early in 0.1.3: both source modes use an isolated SVG print engine without patching Obsidian internals |
 
-## `0.5.0` — distribution efficiency and offline behavior
+## `0.5.0` — offline font handling
 
-The current bundle is about 12 MB because both renderers and their dynamic glyph data are included.
-Size work must preserve the isolated MathJax 4 engine and rare-glyph correctness.
+Scope narrowed by decision on 2026-09-07: 0.5.0 ships the font line only (FONT-01, FONT-02). The
+bundle-size and trust-boundary items (SIZE-01, SIZE-02, SIZE-03, SEC-01) return to the backlog
+section at the bottom of this file and are not part of 0.5.0.
+
+| ID | Priority | Work item | Estimate | Acceptance criteria |
+| --- | --- | --- | --- | --- |
+| FONT-01 | P1 | Optional CommonHTML offline-font handling | M | ✅ Delivered for 0.5.0: designed in [`docs/offline-fonts.md`](offline-fonts.md) and implemented as an opt-in **Font source: local cache** setting — the woff2 set referenced by the engine stylesheet (105 New Computer Modern files, ≈1.8 MB) is downloaded once from the version-pinned CDN into the plugin folder (`fonts/<font version>/`), served back through Obsidian's `app://` resource path, integrity-checked (`wOF2` magic bytes), keyed and cleaned per font version, and upgraded by re-downloading when the bundled font version changes. CDN remains the default; custom `fontURL` keeps working in CDN mode |
+| FONT-02 | P0 | Keep SVG as the guaranteed no-font-download path | S | ✅ Delivered for 0.5.0: a test pins that SVG output and the SVG stylesheet contain no font URLs or `@font-face` rules even with a CDN `fontURL` configured; offline acceptance steps are part of the release checklist |
+
+## Backlog
+
+Items moved out of `0.5.0` by the 2026-09-07 scope decision; they keep their IDs and acceptance
+criteria for a future release. The packaging decision rule below still applies to SIZE items.
 
 | ID | Priority | Work item | Estimate | Acceptance criteria |
 | --- | --- | --- | --- | --- |
 | SIZE-01 | P0 | Produce an auditable bundle composition report | M | MathJax core, packages, CHTML data, SVG data and plugin code are measured separately |
 | SIZE-02 | P1 | Evaluate renderer-specific builds or distributions | L | Installation, settings migration, community-directory rules and maintenance cost are compared with measured sizes |
 | SIZE-03 | P1 | Evaluate safe deduplication and minification options | M | Root/extensible and uncommon glyph regression suites pass byte-for-byte functional checks |
-| FONT-01 | P1 | Design optional CommonHTML offline-font handling | L | Cache location, download integrity, upgrades, cleanup and offline fallback are specified before implementation |
-| FONT-02 | P0 | Keep SVG as the guaranteed no-font-download path | S | Offline acceptance verifies representative and rare glyphs without network access |
 | SEC-01 | P0 | Review externally configured font and preamble paths | M | URL schemes and vault paths have documented trust boundaries; unsafe or ambiguous input fails visibly |
+
+Also carried: MOB-01 device pass (see `docs/mobile-spike.md`; closes MOB-02's conditional), and
+PKG-01 (`bussproofs` evaluation, 0.2.0 backlog).
 
 ### Packaging decision rule
 
 A smaller bundle is not accepted if it requires replacing `window.MathJax`, silently drops package
 support, depends on unavailable runtime modules, or reintroduces missing glyph chunks. If no safe
-option materially improves size, the release documents that result instead of forcing a rewrite.
+option materially improves size, a release documents that result instead of forcing a rewrite.
 
 ## `1.0.0` — stable contract
 

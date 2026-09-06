@@ -28,6 +28,12 @@ import {
     normalizePreamblePath,
     type PreambleProblem,
 } from "./preamble/preambleModel";
+import { LocalFontCache } from "./fonts/LocalFontCache";
+import {
+    DEFAULT_FONT_URL,
+    MATHJAX_FONT_VERSION,
+    type EngineConfig,
+} from "./engine/MathJaxConfig";
 import { logger } from "./utils/logger";
 import { buildVersionReport, type VersionReport } from "./utils/version";
 
@@ -54,16 +60,29 @@ export default class LatestMathJaxPlugin extends Plugin {
     /** Why the configured preamble file is not applied, if it cannot be read. */
     private preambleFileProblem: PreambleProblem | null = null;
     private preambleFiles!: PreambleFileService;
+    private fontCache: LocalFontCache | null = null;
+    /** Vault-relative cache dir of the current font version, once a cache exists. */
+    private localFontResourceDir: string | null = null;
+    /** The font URL currently applied to the engine, to avoid redundant reconfigurations. */
+    private appliedFontUrl: string | null = null;
+    /** Set on unload; async font work checks it before touching state. */
+    private disposed = false;
 
     async onload(): Promise<void> {
         await this.loadSettings();
         logger.setEnabled(this.settings.debugMode);
 
         this.engine = new MathJaxEngine(
-            toEngineConfig(this.settings),
+            this.engineConfig(),
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
         this.compatibility = new CompatibilityManager(document);
+        this.fontCache = new LocalFontCache({
+            adapter: this.app.vault.adapter,
+            pluginDir: this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`,
+            fontVersion: MATHJAX_FONT_VERSION,
+            sourceRoot: DEFAULT_FONT_URL,
+        });
         this.preambleFiles = new PreambleFileService({
             getRawPath: () => this.settings.preambleFile,
             readFile: (path) => this.app.vault.adapter.read(path),
@@ -127,6 +146,12 @@ export default class LatestMathJaxPlugin extends Plugin {
             callback: () => void this.reloadPreambleCommand(),
         });
 
+        this.addCommand({
+            id: "download-fonts",
+            name: "Download fonts for offline use",
+            callback: () => void this.downloadFontsCommand(),
+        });
+
         this.addSettingTab(new LatestMathJaxSettingTab(this.app, this));
 
         // Reading View: take over $$…$$ display math in rendered notes. The processor is a no-op
@@ -164,10 +189,13 @@ export default class LatestMathJaxPlugin extends Plugin {
     }
 
     onunload(): void {
+        this.disposed = true;
         // Restore Obsidian's own formula DOM before removing the stylesheet used by our output.
         // This must be synchronous: an async preview rerender can finish after the engine is gone.
         this.readingViewSnapshots.restoreAll();
         this.preambleFiles?.dispose();
+        this.fontCache?.dispose();
+        this.fontCache = null;
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
         this.engine?.dispose();
@@ -191,13 +219,100 @@ export default class LatestMathJaxPlugin extends Plugin {
         // path changed, re-read before rebuilding — otherwise the engine would evaluate the
         // previous file's content under the new path's label until the next reload.
         await this.preambleFiles.reloadIfPathChanged();
-        const rebuilt = this.engine.updateConfig(
-            toEngineConfig(this.settings, this.filePreamble),
-        );
+        // Font source changes are applied here too. In local mode with an incomplete cache this
+        // kicks off the background download and re-applies the font URL when it completes;
+        // meanwhile the engine stays on the CDN fallback (docs/offline-fonts.md).
+        void this.applyFontSource();
+        const rebuilt = this.engine.updateConfig(this.engineConfig());
         // PDF uses a private SVG engine so export never depends on remote CHTML webfonts.
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
         if (rebuilt) logger.debug("engine reconfigured");
+    }
+
+    /** The engine configuration for the current settings, with the effective font URL applied. */
+    private engineConfig(): EngineConfig {
+        const config = toEngineConfig(this.settings, this.filePreamble);
+        config.fontURL = this.effectiveFontUrl();
+        return config;
+    }
+
+    /**
+     * The font URL the interactive engine should use right now.
+     *
+     * Local mode serves the downloaded cache through Obsidian's resource protocol once it exists;
+     * until then (and in CDN mode) it is the configured `fontURL`, so an offline user keeps the
+     * metrics-correct CDN behavior while the cache downloads.
+     */
+    private effectiveFontUrl(): string {
+        if (this.settings.fontSource === "local" && this.localFontResourceDir) {
+            return this.app.vault.adapter.getResourcePath(this.localFontResourceDir);
+        }
+        return this.settings.fontURL;
+    }
+
+    /**
+     * Aligns the engine's font URL with the Font source setting (FONT-01, docs/offline-fonts.md).
+     * Local mode with an incomplete cache downloads in the background and re-applies on success;
+     * failures keep the CDN fallback and surface once per attempt via Notice.
+     */
+    private async applyFontSource(): Promise<void> {
+        if (!this.fontCache) return;
+        if (this.settings.fontSource !== "local") {
+            this.applyEngineFontUrl();
+            return;
+        }
+        if (!this.engine.isInitialised) this.engine.initialise();
+        const fileNames = this.engine.getFontFaceUrls()
+            .map((url) => url.split("/").pop() ?? url);
+        const result = await this.fontCache.ensureFiles(fileNames);
+        if (this.disposed || this.settings.fontSource !== "local") return;
+        if (result.ok) {
+            this.localFontResourceDir = this.fontCache.versionDir();
+            void this.fontCache.cleanOtherVersions();
+            this.applyEngineFontUrl();
+            if (result.downloaded > 0) {
+                new Notice(
+                    `Latest MathJax: downloaded ${result.downloaded} font file(s) for offline use.`,
+                );
+            }
+        } else {
+            this.applyEngineFontUrl();
+            new Notice(
+                "Latest MathJax: font download failed; CHTML glyphs fall back to a system " +
+                    "font offline. Use \"Download fonts for offline use\" to retry.",
+            );
+        }
+    }
+
+    /** Reconfigures the engine when the effective font URL changed, refreshing rendered surfaces. */
+    private applyEngineFontUrl(): void {
+        const url = this.effectiveFontUrl();
+        if (this.appliedFontUrl === url) return;
+        this.appliedFontUrl = url;
+        if (this.engine.updateConfig(this.engineConfig())) {
+            this.refreshRenderedSurfaces();
+        }
+    }
+
+    private async downloadFontsCommand(): Promise<void> {
+        if (!this.fontCache) return;
+        if (!this.engine.isInitialised) this.engine.initialise();
+        const names = this.engine.getFontFaceUrls().map((url) => url.split("/").pop() ?? url);
+        const result = await this.fontCache.ensureFiles(names);
+        if (result.ok) {
+            this.localFontResourceDir = this.fontCache.versionDir();
+            void this.fontCache.cleanOtherVersions();
+            if (this.settings.fontSource === "local") this.applyEngineFontUrl();
+            new Notice(
+                `Latest MathJax: font cache ready (${result.downloaded} downloaded, ` +
+                    `${names.length} total).`,
+            );
+        } else {
+            new Notice(
+                `Latest MathJax: font download failed — ${result.error ?? "unknown error"}.`,
+            );
+        }
     }
 
     renderInto(
@@ -208,7 +323,7 @@ export default class LatestMathJaxPlugin extends Plugin {
     ): HTMLElement {
         if (!pdfExport) return this.engine.renderInto(tex, { display }, targetDocument);
         if (!this.pdfEngine) {
-            const config = toEngineConfig(this.settings, this.filePreamble);
+            const config = this.engineConfig();
             config.renderer = "svg";
             this.pdfEngine = new MathJaxEngine(
                 config,
@@ -244,7 +359,7 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.filePreamble = content;
         this.preambleFileProblem = problem;
         if (contentChanged) {
-            this.engine.updateConfig(toEngineConfig(this.settings, content));
+            this.engine.updateConfig(this.engineConfig());
             // A lazily created PDF engine would otherwise keep exporting with the old macros.
             this.pdfEngine?.dispose();
             this.pdfEngine = null;
@@ -274,6 +389,9 @@ export default class LatestMathJaxPlugin extends Plugin {
             logger.error("engine initialisation failed:", err);
             new Notice("Latest MathJax: engine failed to start, see console for details.");
         }
+        // The stylesheet (and its @font-face download set) exists after initialisation; local
+        // mode downloads in the background and re-applies the font URL on completion.
+        void this.applyFontSource();
         void this.refreshVersionReport();
     }
 
