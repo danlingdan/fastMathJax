@@ -25,7 +25,7 @@ describe("MathJaxEngine", () => {
         const second = instance.render(String.raw`x^2 + \frac{1}{2} + \sqrt{\pi}`, { display: true });
         expect(first.tagName.toLowerCase()).toBe("mjx-container");
         expect(first.getAttribute("data-latest-mathjax-engine")).toBe("4.1.3");
-        expect(first.querySelector("mjx-c.mjx-c221A")?.textContent).toBe("√");
+        expect(first.querySelector("latest-mjx-c.mjx-c221A")?.textContent).toBe("√");
         expect(first).not.toBe(second);
         expect(instance.stats).toMatchObject({ renders: 1, cache: { hits: 1, misses: 1 } });
     });
@@ -74,8 +74,7 @@ describe("MathJaxEngine", () => {
             .toThrow(MathRenderError);
     });
 
-    it("rebuilds cleanly across CHTML -> SVG -> CHTML switches", () => {
-        const instance = engine();
+    it("rebuilds cleanly across CHTML -> SVG -> CHTML switches", () => {        const instance = engine();
         instance.initialise();
         const dynamicFormula = String.raw`\mathbb{R}\xrightarrow{\text{limit}}\infty`;
         const initialDocument = document.implementation.createHTMLDocument("initial-chtml");
@@ -99,6 +98,32 @@ describe("MathJaxEngine", () => {
             .toBe(initialStyles);
     });
 
+    it("resets cache statistics on output-affecting reconfiguration", () => {
+        const instance = engine();
+        instance.initialise();
+        const tex = String.raw`x^2`;
+        instance.render(tex, { display: false });
+        instance.render(tex, { display: false });
+        expect(instance.stats).toMatchObject({ cache: { hits: 1, misses: 1 } });
+
+        // A scale change is output-affecting but cheap: entries are dropped and the session
+        // counters reset with them, so the settings display never reports stale statistics.
+        const rescaled = defaultEngineConfig();
+        rescaled.scale = 2;
+        expect(instance.updateConfig(rescaled)).toBe(true);
+        expect(instance.stats).toMatchObject({ cache: { size: 0, hits: 0, misses: 0 } });
+
+        // A size-only change keeps entries (clamped) and statistics; it is not an invalidation.
+        instance.render(tex, { display: false });
+        const before = instance.stats.cache;
+        instance.setCacheSize(10);
+        expect(instance.stats.cache).toMatchObject({
+            size: Math.min(before.size, 10),
+            hits: before.hits,
+            misses: before.misses,
+        });
+    });
+
     it("keeps concurrent CommonHTML font instances independent", () => {
         const first = engine();
         const second = engine();
@@ -114,7 +139,7 @@ describe("MathJaxEngine", () => {
         const config = defaultEngineConfig();
         config.enableAssistiveMml = true;
         const rendered = engine(config).render("x+1", { display: false });
-        expect(rendered.querySelector("mjx-assistive-mml math")).not.toBeNull();
+        expect(rendered.querySelector("latest-mjx-assistive-mml math")).not.toBeNull();
     });
 
     it("adopts output and copies styles into a popout document", () => {

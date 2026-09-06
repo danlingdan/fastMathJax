@@ -3,6 +3,54 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.0 - 2026-09-07
+
+- Fixed formulas rendering with broken layout (misplaced radical bars, floating glyph fragments,
+  double-drawn math) when Obsidian's built-in MathJax stylesheet loads after the plugin's: both
+  engines emit the same `mjx-*` tag vocabulary with different typesetting CSS, so the host's
+  rules could apply to the plugin's output. The bundled engine now isolates its output —
+  rendered containers are rewritten into a private `latest-mjx-*` tag namespace and the engine's
+  stylesheet selectors are rewritten to key on the plugin's own engine marker — so the two
+  engines' CSS can never cross-apply, in either direction.
+- Completed the 0.3.0 roadmap scope: cache statistics (entries, hits, misses, hit rate, session
+  renders) are exposed in settings and the render-test view without debug logging, with correct
+  reset semantics on clear and output-affecting reconfiguration (PERF-05); structural-context
+  fixtures cover math in callouts, tables, lists, blockquotes, footnotes and embeds and were
+  desktop-verified on Obsidian 1.13.7 with pairing intact everywhere (SURF-01); count-mismatch
+  fail-closed behavior is pinned independently for inline and display math (SURF-02); and
+  `docs/smoke-testing.md` documents the repeatable clean-vault acceptance procedure using
+  checked-in fixtures only (TEST-01).
+- Reviewed observer and refresh scope for recursive-refresh safety (ROADMAP PERF-04). The Live
+  Preview mutation filter now lives in `src/editor/observerFilter.ts` with tests pinning that the
+  plugin's own replacement mutations and wrappers Obsidian recreated around preserved engine
+  output never reschedule a render pass, while fresh math still does; the math settle wait only
+  observes the `class` attribute, so takeover attribute writes can neither resolve nor prolong
+  it. Scheduling remains a single replaced timer plus one animation frame, cancelled on destroy,
+  and the settings refresh path is bounded by open leaves with no recursion into settings or
+  file writes.
+- Bounded and cancelled stale asynchronous render work in Reading View and PDF export (ROADMAP
+  PERF-03): a run whose section was replaced by Obsidian mid-await now aborts instead of
+  rendering into a detached tree, per-paragraph staging repairs stop once the section goes
+  stale, wrappers detached since collection are skipped, and a discarded print document ends the
+  PDF block loop. Rapid edits therefore converge to the newest document state without burning
+  the render pipeline on invisible output. Live Preview already had revision checks and
+  debounce-based convergence from 0.1.4. New integration tests cover the post-processor's
+  currency-repair flow end to end.
+- Fixed a 0.2.0 defect in the preamble-file workflow: changing the **Preamble file** setting
+  rebuilt the engine with the *previous* file's content under the new path's label, so the new
+  file's macros were missing (and the stale content could even produce a parse failure attributed
+  to the new path) until the next vault event, a manual **Reload preamble**, or a restart.
+  `saveSettings` now re-reads the file whenever the configured path changed before rebuilding the
+  engine, and a preamble content change also invalidates the lazily created PDF export engine so
+  exports can never reuse stale macros.
+- Added reproducible benchmark fixtures and the first measurement pass for 0.3.0 (ROADMAP
+  PERF-01, PERF-02): `npm run bench:generate` deterministically generates 100- and 500-formula
+  notes covering unique and repeated inline/display formulas, preamble-file macros and
+  intentional invalid input, and the `benchmarks/tools/measure-console.js` DevTools harness
+  records open, scroll-through, typing and view-switch latencies in a real Obsidian vault.
+  `docs/benchmarks.md` documents the fixtures, procedure, machine profile, medians/p95s and the
+  findings that gate further optimization work.
+
 ## 0.2.0 - 2026-09-06
 
 - Added an optional vault-relative **preamble file** setting: its TeX definitions are evaluated

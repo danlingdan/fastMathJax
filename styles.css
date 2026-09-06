@@ -281,6 +281,12 @@
 
 /* --- Reading View takeover ----------------------------------------------- */
 
+/* The host's MathJax 3 sets line-height: 0 on CHTML containers. MathJax 4 applies
+   that to its internal math element instead; keep its outer line box intact. */
+mjx-container[data-latest-mathjax-engine][jax="CHTML"] {
+    line-height: normal;
+}
+
 /* Our re-rendered display math keeps Obsidian's centering and block layout, independent of
    MathJax's own injected stylesheet (which may not have applied yet on first paint). */
 /* stylelint-disable-next-line selector-type-no-unknown */

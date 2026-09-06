@@ -43,4 +43,41 @@ describe("MathCache", () => {
         cache.set("b", node("b"));
         expect(cache.stats.size).toBe(0);
     });
+
+    it("keeps statistics and clamps size across a resize reconfiguration", () => {
+        const cache = new MathCache(4);
+        cache.set("a", node("a"));
+        cache.get("a");
+        cache.get("missing");
+        expect(cache.stats).toMatchObject({ size: 1, hits: 1, misses: 1, maxSize: 4 });
+
+        cache.resize(1);
+        expect(cache.stats).toMatchObject({
+            size: 1,
+            maxSize: 1,
+            hits: 1,
+            misses: 1,
+            hitRate: 0.5,
+        });
+    });
+
+    it("resets size and counters on clear", () => {
+        const cache = new MathCache(4);
+        cache.set("a", node("a"));
+        cache.get("a");
+        cache.get("gone");
+        cache.clear();
+        expect(cache.stats).toMatchObject({
+            size: 0,
+            hits: 0,
+            misses: 0,
+            hitRate: 0,
+        });
+        expect(cache.get("a")).toBeNull();
+    });
+
+    it("reports a zero hit rate before anything was requested", () => {
+        const cache = new MathCache(2);
+        expect(cache.stats).toMatchObject({ size: 0, maxSize: 2, hits: 0, misses: 0, hitRate: 0 });
+    });
 });

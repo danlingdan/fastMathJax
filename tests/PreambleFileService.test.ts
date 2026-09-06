@@ -176,4 +176,49 @@ describe("PreambleFileService", () => {
         await vi.advanceTimersByTimeAsync(PREAMBLE_RELOAD_DEBOUNCE_MS + 1);
         expect(reloadSpy).not.toHaveBeenCalled();
     });
+
+    it("reloadIfPathChanged skips the read while the configured path is unchanged", async () => {
+        const state = createHarness();
+        await state.service.reload();
+        const reloadSpy = vi.spyOn(state.service, "reload");
+
+        const outcome = await state.service.reloadIfPathChanged();
+        expect(outcome).toBeNull();
+        expect(reloadSpy).not.toHaveBeenCalled();
+        expect(state.appliedContentChanges).toBe(1);
+    });
+
+    it("reloadIfPathChanged reloads when the configured path changed", async () => {
+        const state = createHarness("macros/preamble.tex");
+        await state.service.reload();
+        expect(state.content).toBe("\\newcommand{\\A}{a}");
+
+        state.files.set("macros/other.tex", "\\newcommand{\\B}{b}");
+        state.rawPath = "macros/other.tex";
+        const outcome = await state.service.reloadIfPathChanged();
+
+        expect(outcome).toMatchObject({ content: "\\newcommand{\\B}{b}", changed: true });
+        expect(state.content).toBe("\\newcommand{\\B}{b}");
+        expect(state.refreshes).toBe(2);
+    });
+
+    it("reloadIfPathChanged reloads before any load has completed", async () => {
+        const state = createHarness();
+        const outcome = await state.service.reloadIfPathChanged();
+        expect(outcome).not.toBeNull();
+        expect(state.content).toBe("\\newcommand{\\A}{a}");
+    });
+
+    it("reloadIfPathChanged stays skipped after a failed read of the same path", async () => {
+        const state = createHarness();
+        state.failReadFor = "macros/preamble.tex";
+        await state.service.reload();
+        expect(state.problem?.message).toContain("disk on fire");
+
+        state.failReadFor = null;
+        // The applied state (empty content + problem) already belongs to this path, so a settings
+        // save must not re-read it; healing stays with vault events and the reload command.
+        const outcome = await state.service.reloadIfPathChanged();
+        expect(outcome).toBeNull();
+    });
 });

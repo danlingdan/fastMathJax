@@ -10,6 +10,7 @@ import { AssistiveMmlHandler } from "@mathjax/src/js/a11y/assistive-mml.js";
 import type { MathDocument } from "@mathjax/src/js/core/MathDocument.js";
 
 import { MathCache, type CacheStats } from "./MathCache";
+import { isolateOutput, isolateStyles } from "./outputIsolation";
 import {
     type EngineConfig,
     configHash,
@@ -294,6 +295,7 @@ export class MathJaxEngine {
                 ...this.metrics(),
             }) as HTMLElement;
             node.setAttribute("data-latest-mathjax-engine", mathjax.version);
+            isolateOutput(node);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -335,6 +337,7 @@ export class MathJaxEngine {
                 ...this.metrics(),
             })) as HTMLElement;
             node.setAttribute("data-latest-mathjax-engine", mathjax.version);
+            isolateOutput(node);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -409,14 +412,14 @@ export class MathJaxEngine {
     private flushStyles(): void {
         if (!this.outputJax || !this.doc) return;
         const sheet = this.outputJax.styleSheet(this.doc) as unknown as HTMLStyleElement;
-        if (this.styleNode === sheet) return; // subsequent calls mutate the same node in place
-
-        this.styleNode = sheet;
-        sheet.id = STYLE_ELEMENT_ID;
-        document.head.appendChild(sheet);
-        // Now that it is connected, `sheet.sheet` exists — ask again so the rules collected during
-        // the first pass actually get inserted.
-        this.outputJax.styleSheet(this.doc);
+        if (this.styleNode !== sheet) {
+            this.styleNode = sheet;
+            sheet.id = STYLE_ELEMENT_ID;
+            document.head.appendChild(sheet);
+            // Now that it is connected, insert any pending adaptive rules.
+            this.outputJax.styleSheet(this.doc);
+        }
+        if (sheet.sheet) isolateStyles(sheet.sheet.cssRules);
     }
 
     /**
@@ -433,6 +436,7 @@ export class MathJaxEngine {
      */
     ensureStyles(targetDoc: Document): void {
         if (targetDoc === document) return;
+        this.flushStyles();
         if (!this.styleNode) return;
         const css = this.serializedStyles();
         let target = targetDoc.getElementById(STYLE_ELEMENT_ID) as HTMLStyleElement | null;

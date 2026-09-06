@@ -1,6 +1,6 @@
 {
   "name": "obsidian-latest-mathjax",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Use the latest MathJax engine for mathematical rendering in Obsidian.",
   "main": "main.js",
   "type": "module",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit --skipLibCheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:generate": "node scripts/generate-benchmarks.mjs",
     "check": "npm run lint:api && npm test && npm run build && npm run release:check",
     "lint:api": "eslint \"src/**/*.ts\" --max-warnings 0",
     "release:check": "node scripts/validate-release.mjs",

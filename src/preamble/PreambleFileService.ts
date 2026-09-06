@@ -55,6 +55,8 @@ export class PreambleFileService {
     private readonly debounceMs: number;
     private reloadHandle: ReturnType<typeof setTimeout> | null = null;
     private disposed = false;
+    /** Raw configured path whose content the last completed reload applied; null until then. */
+    private loadedRawPath: string | null = null;
 
     constructor(private readonly deps: PreambleFileServiceDeps) {
         this.debounceMs = deps.debounceMs ?? PREAMBLE_RELOAD_DEBOUNCE_MS;
@@ -67,10 +69,25 @@ export class PreambleFileService {
      * applyResult failure propagates to the caller.
      */
     async reload(): Promise<PreambleLoadResult> {
+        const raw = this.deps.getRawPath();
         const { content, problem } = await this.readConfiguredFile();
+        this.loadedRawPath = raw;
         const changed = this.deps.applyResult(content, problem);
         if (changed) this.deps.onContentApplied();
         return { content, problem, changed };
+    }
+
+    /**
+     * Reloads only when the configured path changed since the last load.
+     *
+     * The applied file content always belongs to the path it was read from. A caller that changes
+     * the configured path must not keep rendering the previous file's content under the new
+     * path's label, so settings flows call this before rebuilding the engine; an unchanged path
+     * costs one string comparison and no file read. Returns null when no reload was needed.
+     */
+    async reloadIfPathChanged(): Promise<PreambleLoadResult | null> {
+        if (this.deps.getRawPath() === this.loadedRawPath) return null;
+        return this.reload();
     }
 
     /**

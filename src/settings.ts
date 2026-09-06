@@ -220,11 +220,9 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 this.plugin.settings = normalizeSettings({ ...previous, [key]: value });
             }
             await this.plugin.saveSettings();
-            if (key === "preambleFile") {
-                // The reload path refreshes surfaces itself, and only when the file content
-                // actually changed — a path-only edit never re-renders.
-                void this.plugin.reloadPreambleFile();
-            } else if (this.settingAffectsRenderedSurfaces(key)) {
+            // A preambleFile path change re-reads the file inside saveSettings before the engine
+            // is rebuilt, so no per-key handling is needed here.
+            if (this.settingAffectsRenderedSurfaces(key)) {
                 this.plugin.refreshRenderedSurfaces();
             }
             invokeModernSettingTabMethod(this, "refreshDomState");
@@ -281,7 +279,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
             "cacheSize",
             "renderDebounce",
             "debugMode",
-            // Handled by the preamble file reload, which refreshes only on a content change.
+            // saveSettings re-reads the file when the preamble path changed and refreshes
+            // surfaces only on a content change; a same-path edit never re-renders.
             "preambleFile",
         ].includes(key);
     }
@@ -533,8 +532,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     if (value === this.plugin.settings.preambleFile) return;
                     void (async () => {
                         this.plugin.settings.preambleFile = value;
+                        // saveSettings re-reads a changed path before rebuilding the engine.
                         await this.plugin.saveSettings();
-                        await this.plugin.reloadPreambleFile();
                         showStatus();
                     })();
                 });

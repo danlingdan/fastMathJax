@@ -187,6 +187,10 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.engine.setCacheSize(
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
+        // The cached filePreamble belongs to the path it was loaded from. When the configured
+        // path changed, re-read before rebuilding — otherwise the engine would evaluate the
+        // previous file's content under the new path's label until the next reload.
+        await this.preambleFiles.reloadIfPathChanged();
         const rebuilt = this.engine.updateConfig(
             toEngineConfig(this.settings, this.filePreamble),
         );
@@ -241,6 +245,9 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.preambleFileProblem = problem;
         if (contentChanged) {
             this.engine.updateConfig(toEngineConfig(this.settings, content));
+            // A lazily created PDF engine would otherwise keep exporting with the old macros.
+            this.pdfEngine?.dispose();
+            this.pdfEngine = null;
         }
         return contentChanged;
     }

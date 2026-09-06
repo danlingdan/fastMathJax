@@ -48,6 +48,25 @@ describe("waitForSettledMath", () => {
 
         expect(settled).toEqual([settledNode]);
     });
+
+    it("does not mistake the plugin's data-attribute writes for finalization", async () => {
+        // The takeover writes data-* attributes on wrappers after settling; the wait observes
+        // only the class attribute, so those writes can neither resolve nor prolong it.
+        vi.useFakeTimers();
+        const pendingNode = mathWrapper(false);
+        const promise = waitForSettledMath([pendingNode]);
+        const settledDuringWrites = promise.then((nodes) => {
+            void nodes;
+            return true;
+        });
+        pendingNode.setAttribute("data-latest-mathjax", "true");
+        const raced = await Promise.race([
+            settledDuringWrites.then(() => "resolved"),
+            vi.advanceTimersByTimeAsync(20).then(() => "still-pending"),
+        ]);
+        expect(raced).toBe("still-pending");
+        expect(pendingNode.classList.contains("is-loaded")).toBe(false);
+    });
 });
 
 describe("describeMathError", () => {

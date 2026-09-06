@@ -11,6 +11,7 @@ import {
 } from "../utils/mathSource";
 import { waitForSettledMath } from "./mathSettle";
 import { planInlineBlocks, uniqueParagraphForBlock } from "./paragraphLocator";
+import { sectionIsCurrent, targetIsCurrent } from "./sectionFreshness";
 import { logger } from "../utils/logger";
 import { createFallbackElement } from "../render/fallback";
 
@@ -73,6 +74,13 @@ export function createReadingViewProcessor(
             logger.debug("Reading View: no section info, leaving Obsidian output in place");
             return;
         }
+        // The settle wait and the vault read can span seconds; Obsidian may have re-rendered the
+        // section meanwhile, detaching everything this run captured. A stale run mounts output
+        // nobody will ever see, so it stops here (PERF-03).
+        if (!sectionIsCurrent(element)) {
+            logger.debug("Reading View: section replaced mid-run; skipping stale render");
+            return;
+        }
 
         // Recover the TeX in document order, then split by kind so an inline formula can never
         // shift a block's index (and vice versa).
@@ -124,6 +132,11 @@ async function rerenderInlineBlocksForPdf(
     sourcePath: string,
 ): Promise<void> {
     for (const plan of planInlineBlocks(sourceText)) {
+        // Each block's staging render is an await; the print document can be discarded mid-loop.
+        if (!sectionIsCurrent(element)) {
+            logger.debug("PDF export: document discarded mid-run; skipping remaining blocks");
+            break;
+        }
         const target = uniqueParagraphForBlock(element, plan.markdown);
         if (!target) {
             logger.debug(
@@ -153,9 +166,13 @@ async function rerenderInlineBlocksForPdf(
                 );
                 continue;
             }
-            await rerender(plugin, wrappers, plan.sources, false, true);
+            await rerender(plugin, wrappers, plan.sources, false, true, { allowDetachedWrappers: true });
             const replacement = staging.querySelector("p");
-            if (replacement) target.replaceWith(replacement);
+            if (replacement && targetIsCurrent(element, target)) {
+                target.replaceWith(replacement);
+            } else if (!targetIsCurrent(element, target)) {
+                logger.debug("PDF export: paragraph detached mid-render; keeping built-in output");
+            }
         } catch (error) {
             logger.warn("PDF export: failed to re-render an inline block:", error);
         } finally {
@@ -179,6 +196,15 @@ async function repairDollarParagraphs(
     const sourceParts = source.split(/(\n[\t ]*\n)/u);
     const sanitizedParts = sanitized.split(/(\n[\t ]*\n)/u);
     for (let i = 0; i < sourceParts.length; i += 2) {
+        // Staging renders await; Obsidian can re-render the section between blocks, detaching
+        // everything this run captured. Stop instead of rendering into a dead tree (PERF-03).
+        if (!sectionIsCurrent(element)) {
+            logger.debug(
+                `${pdfExport ? "PDF export" : "Reading View"}: section replaced mid-repair; ` +
+                "skipping remaining blocks",
+            );
+            break;
+        }
         const originalBlock = sourceParts[i];
         const sanitizedBlock = sanitizedParts[i];
         if (!originalBlock || originalBlock === sanitizedBlock) continue;
@@ -212,6 +238,7 @@ async function repairDollarParagraphs(
                     sources.filter((entry) => entry.display),
                     true,
                     pdfExport,
+                    { allowDetachedWrappers: true },
                 ),
                 rerender(
                     plugin,
@@ -219,11 +246,19 @@ async function repairDollarParagraphs(
                     sources.filter((entry) => !entry.display),
                     false,
                     pdfExport,
+                    { allowDetachedWrappers: true },
                 ),
             ]);
 
             const replacement = staging.querySelector("p");
-            if (replacement) target.replaceWith(replacement);
+            if (replacement && targetIsCurrent(element, target)) {
+                target.replaceWith(replacement);
+            } else if (!targetIsCurrent(element, target)) {
+                logger.debug(
+                    `${pdfExport ? "PDF export" : "Reading View"}: paragraph detached ` +
+                    "mid-repair; keeping built-in output",
+                );
+            }
         } catch (error) {
             logger.warn(
                 `${pdfExport ? "PDF export" : "Reading View"}: failed to repair currency paragraph:`,
@@ -273,6 +308,7 @@ async function rerender(
     texList: { tex: string }[],
     display: boolean,
     pdfExport = false,
+    opts: { allowDetachedWrappers?: boolean } = {},
 ): Promise<void> {
     // A mismatch means Obsidian and our conservative scanner disagree (currency-like dollars are
     // the common case). Index pairing would move later TeX into the wrong wrapper, so fail closed.
@@ -291,6 +327,14 @@ async function rerender(
             continue;
         }
         const wrapper = nodes[i];
+        // Staging wrappers are detached by design; live wrappers that lost their place since
+        // collect would only receive output nobody displays.
+        if (!opts.allowDetachedWrappers && !wrapper.isConnected) {
+            logger.debug(
+                `Reading View: ${display ? "block" : "inline"} #${i} detached since collect; skipping`,
+            );
+            continue;
+        }
         try {
             const node = plugin.renderInto(tex, display, wrapper.ownerDocument, pdfExport);
             plugin.readingViewSnapshots.replace(wrapper, node);

@@ -1,6 +1,6 @@
 # Project status
 
-Latest MathJax `0.2.0` is released, desktop-accepted and runtime-verified. It remains
+Latest MathJax `0.3.0` is released, desktop-accepted and runtime-verified. It remains
 desktop-only until a separate mobile acceptance pass is completed.
 
 ## 0.2.0 — preamble workflow (released 2026-09-06)
@@ -43,6 +43,56 @@ paragraphs with a code span; and such a paragraph keeps every dollar literal wit
 rendered in both Reading View and the exported PDF.
 
 Release: tag `0.2.0` built and published by GitHub Actions with provenance attestation.
+
+## 0.3.0 — rendering resilience and performance (released 2026-09-07)
+
+All roadmap items for 0.3.0 shipped, covered by the automated gates (112 tests across 17 files,
+lint, typecheck, production build, release metadata validation) and desktop-accepted on Obsidian
+1.13.7.
+
+Rendering isolation (headline fix): formulas could render with broken layout (misplaced radical
+bars, floating glyph fragments, double-drawn math) because the plugin's MathJax 4 and Obsidian's
+built-in MathJax emit the same `mjx-*` tag vocabulary with different typesetting CSS, and the
+host's stylesheet loads after the plugin's. The bundled engine now isolates its output —
+rendered containers are rewritten into a private `latest-mjx-*` tag namespace
+(`src/engine/outputIsolation.ts`) and the engine's stylesheet selectors are rewritten to key on
+the plugin's own engine marker — so the two engines' CSS can never cross-apply, in either
+direction. The release also fixes a 0.2.0 defect: switching the preamble file setting evaluated
+the previous file's cached content until the next reload; `saveSettings` now re-reads the file
+when the configured path changed before rebuilding the engine, and a preamble content change
+invalidates the lazily created PDF export engine.
+
+Benchmark baseline (PERF-01, PERF-02): `npm run bench:generate` deterministically writes 100-
+and 500-formula notes covering unique and repeated inline/display formulas, preamble-file
+macros, intentional invalid input and a math-free typing anchor, with fixture tests pinning
+composition and determinism. The `benchmarks/tools/measure-console.js` DevTools harness recorded
+cold/warm open, scroll-through, typing and view-switch latencies in a real Obsidian 1.13.7 vault
+(warm n=10, cold n=3 restarts per note size). Key results: typing and view-switch latency are
+document-size-independent; warm open cost scales with document length (668 ms at 100 formulas
+vs 1725 ms at 500) even though both mount the same 35-formula viewport, making the per-open
+pipeline the first optimization target; cold cache adds ~180 ms to the initial viewport but
+~50% to whole-note scroll-through. Machine profile, full tables and analysis are in
+[`docs/benchmarks.md`](benchmarks.md).
+
+Resilience hardening (PERF-03, PERF-04): Reading View runs abort when their section is detached
+mid-await, staging repairs stop on stale sections, detached wrappers are skipped and PDF export
+aborts when the print document is discarded — pinned by new post-processor integration tests.
+The Live Preview mutation filter is extracted to `src/editor/observerFilter.ts` with tests
+pinning that the plugin's own mutations never reschedule a render pass, the settle wait only
+observes `class`, and the settings refresh path has no recursion into settings or file writes.
+
+Structural surfaces and diagnostics (PERF-05, SURF-01, SURF-02, TEST-01): cache statistics
+(entries/hits/misses/hit rate/session renders) are exposed in settings and the render-test view
+without debug logging; clearing the cache resets counters while size-only reconfiguration
+preserves them. `benchmarks/fixtures/surface-contexts.md` exercises math in callouts, tables,
+lists, blockquotes, footnotes and embeds — desktop-verified on Obsidian 1.13.7 in both views:
+callout, table, list and footnote math render from unambiguous source, currency and code spans
+stay literal, blockquote display math (where Obsidian shows its own quote-marker artifact) and
+embeds are deliberately left to Obsidian, and no context shifted pairing. Count-mismatch
+fail-closed behavior is pinned independently for inline and display math. The clean-vault
+acceptance procedure is documented in [`docs/smoke-testing.md`](smoke-testing.md).
+
+Release: tag `0.3.0` built and published by GitHub Actions with provenance attestation.
 
 ## Completed
 

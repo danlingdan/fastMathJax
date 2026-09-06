@@ -5,14 +5,11 @@ import { createFallbackElement } from "../render/fallback";
 import { findMathRanges, type RecoveredMathRange } from "../utils/mathSource";
 import { logger } from "../utils/logger";
 import { canRestoreBuiltIn } from "./lifecycle";
+import { mutationNeedsRender } from "./observerFilter";
 
 const HANDLED_ATTR = "data-latest-mathjax-live-preview";
 const SOURCE_ATTR = "data-latest-mathjax-source";
 const DISPLAY_ATTR = "data-latest-mathjax-display";
-
-function isElement(node: Node): node is Element {
-    return node.nodeType === 1;
-}
 
 /**
  * Live Preview adapter that cooperates with Obsidian's editor widgets.
@@ -42,36 +39,19 @@ export class LivePreviewRenderer {
                     const Observer = view.dom.ownerDocument.defaultView?.MutationObserver
                         ?? MutationObserver;
                     this.observer = new Observer((records) => {
-                        if (this.hasNewObsidianMath(records)) this.schedule(0);
+                        if (mutationNeedsRender(records, (wrapper) => this.isHandled(wrapper))) {
+                            this.schedule(0);
+                        }
                     });
                     this.observer.observe(view.dom, { childList: true, subtree: true });
                     this.schedule(0);
                 }
 
-                /** Ignores mutations caused by our own replacement nodes. */
-                private hasNewObsidianMath(records: MutationRecord[]): boolean {
-                    const needsHandling = (wrapper: Element): boolean =>
-                        !wrapper.hasAttribute(HANDLED_ATTR) &&
-                        !wrapper.querySelector(
+                private isHandled(wrapper: Element): boolean {
+                    return wrapper.hasAttribute(HANDLED_ATTR) ||
+                        wrapper.querySelector(
                             `[data-latest-mathjax-engine="${plugin.engine.version}"]`,
-                        );
-
-                    for (const record of records) {
-                        if (isElement(record.target)) {
-                            const wrapper = record.target.matches(".math")
-                                ? record.target
-                                : record.target.closest(".math");
-                            if (wrapper && needsHandling(wrapper)) return true;
-                        }
-                        for (const added of Array.from(record.addedNodes)) {
-                            if (!isElement(added)) continue;
-                            if (added.matches(".math") && needsHandling(added)) return true;
-                            for (const wrapper of Array.from(added.querySelectorAll(".math"))) {
-                                if (needsHandling(wrapper)) return true;
-                            }
-                        }
-                    }
-                    return false;
+                        ) !== null;
                 }
 
                 update(update: ViewUpdate): void {
@@ -201,7 +181,7 @@ export class LivePreviewRenderer {
                             // Our MathJax output retains the root TeX in data-latex even if
                             // Obsidian recreates the wrapper and strips our auxiliary attributes.
                             tex: rendered.getAttribute(SOURCE_ATTR)
-                                ?? rendered.querySelector("mjx-math")?.getAttribute("data-latex")
+                                ?? rendered.querySelector("latest-mjx-math")?.getAttribute("data-latex")
                                 ?? "",
                             display: rendered.hasAttribute(DISPLAY_ATTR)
                                 ? rendered.getAttribute(DISPLAY_ATTR) === "true"
