@@ -41,6 +41,7 @@ import {
     NativeMathBridge,
 } from "./invasive/NativeMathBridge";
 import { createInvasiveStyleSyncProcessor } from "./invasive/invasiveStyleSync";
+import { migrateStaleEditorMath } from "./invasive/staleMigration";
 import { createFallbackElement } from "./render/fallback";
 
 const PREAMBLE_TEMPLATE = [
@@ -87,6 +88,13 @@ export default class LatestMathJaxPlugin extends Plugin {
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
         );
         this.compatibility = new CompatibilityManager(document);
+        // Invasive mode: intercept the MathJax bundle the moment Obsidian loads it, so renders
+        // that happen during workspace restore already go through the bundled engine. When the
+        // setting is off this does nothing and the bridge is created on demand later.
+        if (this.settings.invasiveMode) {
+            this.bridge = this.createBridge();
+            this.bridge.preinstall();
+        }
         this.fontCache = new LocalFontCache({
             adapter: this.app.vault.adapter,
             pluginDir: this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`,
@@ -160,6 +168,151 @@ export default class LatestMathJaxPlugin extends Plugin {
             id: "download-fonts",
             name: "Download fonts for offline use",
             callback: () => void this.downloadFontsCommand(),
+        });
+
+        // TEMPORARY (1.0 acceptance): dumps invasive-mode DOM truth to a vault file so the
+        // desktop pass does not depend on fragile DevTools console probes. Remove before release.
+        this.addCommand({
+            id: "invasive-diagnostics",
+            name: "Write invasive diagnostics",
+            callback: () => {
+                const elements = Array.from(document.querySelectorAll<HTMLElement>("*"));
+                const containers = elements.filter(
+                    (el) => el.localName === "mjx-container",
+                );
+                const renamed = elements.filter((el) => el.localName.startsWith("latest-mjx-"));
+                const report: Record<string, unknown> = {
+                    at: new Date().toISOString(),
+                    setting: this.settings.invasiveMode,
+                    invasiveActive: this.invasiveActive,
+                    bridgeInstalled: this.bridge?.isInstalled ?? false,
+                    nativeMathJaxVersion: (window as unknown as { MathJax?: { version?: string } })
+                        .MathJax?.version ?? null,
+                    engineRevision: this.engine.revision,
+                    engineInitialised: this.engine.isInitialised,
+                    bodyClass: document.body.classList.contains("latest-mathjax-invasive"),
+                    nativeFallbackStyles: document.getElementById(
+                        "latest-mathjax-native-fallback-styles",
+                    ) !== null,
+                    engineStyles: document.getElementById(
+                        "latest-mathjax-chtml-styles",
+                    ) !== null,
+                    mjxContainers: containers.length,
+                    stampedContainers: containers.filter((c) =>
+                        c.hasAttribute("data-latest-mathjax-engine"),
+                    ).length,
+                    sourcedContainers: containers.filter((c) =>
+                        c.hasAttribute(INVASIVE_SOURCE_ATTR),
+                    ).length,
+                    latestMjxElements: renamed.length,
+                    probes: [] as string[],
+                };
+                // Rendering probes with captured errors — the console is unreliable here.
+                const probe = (label: string, fn: () => HTMLElement): string => {
+                    try {
+                        const node = fn();
+                        return `${label}: OK ${node.outerHTML.slice(0, 120)}`;
+                    } catch (err) {
+                        return `${label}: THREW ${err instanceof Error ? err.message : String(err)}`;
+                    }
+                };
+                report.probes = [
+                    probe("facade", () => this.renderInto("x^2", false, document, false)),
+                    probe(
+                        "native",
+                        () => (this.bridge
+                            ? this.bridge.renderNative("x^2", false)
+                                ?? "NULL"
+                            : "no-bridge") as unknown as HTMLElement,
+                    ),
+                    probe("renderMath", () => renderMath("x^2", false)),
+                ];
+                report.nativeTex2chtmlIsOurs = Boolean(
+                    this.bridge?.isInstalled &&
+                    (window as unknown as {
+                        MathJax?: { tex2chtml?: unknown };
+                    }).MathJax?.tex2chtml !== undefined,
+                );
+                report.remoutedLeaves = this.lastRemountCount;
+                report.mathWrappers = document.querySelectorAll(".math").length;
+                report.preambleFile = this.settings.preambleFile;
+                report.filePreambleChars = this.filePreamble.length;
+                report.preambleProblems = this.preambleDiagnostics.map((p) =>
+                    `${p.source}: ${p.message.slice(0, 80)}`);
+                report.leaves = [];
+                const leafReports = report.leaves as unknown[];
+                const popoutReports: unknown[] = [];
+                this.app.workspace.iterateAllLeaves((leaf) => {
+                    const view = leaf.view;
+                    const container = view.containerEl;
+                    if (!container) return;
+                    const ownerDoc = container.ownerDocument;
+                    if (ownerDoc !== document) {
+                        const copied = ownerDoc.getElementById("latest-mathjax-chtml-styles");
+                        popoutReports.push({
+                            title: ownerDoc.title,
+                            styleCopied: copied !== null,
+                            styleHead: (copied?.textContent ?? "").slice(0, 160),
+                            hasFontFace: (copied?.textContent ?? "").includes("@font-face"),
+                            containers: ownerDoc.querySelectorAll("mjx-container").length,
+                            fonts: Array.from(ownerDoc.fonts as unknown as Iterable<
+                                { family: string; status: string }>)
+                                .map((f) => `${f.family}:${f.status}`).slice(0, 8),
+                        });
+                    }
+                    const wrappers = container.querySelectorAll(".math");
+                    if (wrappers.length === 0) return;
+                    const markdown = view instanceof MarkdownView ? view : null;
+                    leafReports.push({
+                        type: view.getViewType(),
+                        path: markdown?.file?.path ?? "?",
+                        mode: markdown?.getMode(),
+                        wrappers: wrappers.length,
+                        native: container.querySelectorAll(
+                            ".math mjx-container:not([data-latest-mathjax-engine])",
+                        ).length,
+                        ours: container.querySelectorAll(
+                            ".math mjx-container[data-latest-mathjax-engine]",
+                        ).length,
+                    });
+                });
+                report.popouts = popoutReports;
+                report.fontsStatus = document.fonts.status;
+                report.fontFaces = Array.from(document.fonts as unknown as Iterable<
+                    { family: string; status: string }>)
+                    .filter((f) => f.family.includes("MJX"))
+                    .map((f) => `${f.family}:${f.status}`)
+                    .slice(0, 10);
+                report.allFontFamilies = [...new Set(Array.from(
+                    document.fonts as unknown as Iterable<{ family: string }>,
+                    (f) => f.family,
+                ))].slice(0, 20);
+                const engineSheet = document.getElementById(
+                    "latest-mathjax-chtml-styles",
+                ) as HTMLStyleElement | null;
+                const faceRules = engineSheet?.sheet
+                    ? Array.from(engineSheet.sheet.cssRules)
+                        .filter((r) => r instanceof CSSFontFaceRule)
+                        .map((r) => (r as CSSFontFaceRule).cssText.slice(0, 90))
+                    : [];
+                report.engineFontFaces = faceRules.slice(0, 6);
+                report.engineRuleCount = engineSheet?.sheet?.cssRules.length ?? -1;
+                report.engineTextHasFace = (engineSheet?.textContent ?? "").includes("@font-face");
+                report.mirrorSnippet = (document.getElementById(
+                    "latest-mathjax-native-fallback-styles",
+                )?.textContent ?? "").slice(0, 200);
+                const sampleGlyph = document.querySelector<HTMLElement>("mjx-c.TEX-I");
+                report.glyphFontFamily = sampleGlyph
+                    ? getComputedStyle(sampleGlyph).fontFamily
+                    : "no-glyph-found";
+                report.samples = containers.slice(0, 3).map((c) =>
+                    `parent=${c.parentElement?.className ?? "?"} ` +
+                    `attrs=${Array.from(c.attributes).map((a) => a.name).join("|")} ` +
+                    `html=${c.outerHTML.slice(0, 200)}`);
+                void this.app.vault.adapter
+                    .write("invasive-diagnostics.json", JSON.stringify(report, null, 2))
+                    .then(() => new Notice("Latest MathJax: diagnostics written."));
+            },
         });
 
         this.addSettingTab(new LatestMathJaxSettingTab(this.app, this));
@@ -394,12 +547,13 @@ export default class LatestMathJaxPlugin extends Plugin {
             return;
         }
 
+        if (!this.bridge) {
+            this.bridge = this.createBridge();
+            // Patches immediately when MathJax is already loaded (mid-session toggle).
+            this.bridge.preinstall();
+        }
         this.engine.initialise();
-        const bridge = new NativeMathBridge({
-            render: (tex, display) => this.invasiveRender(tex, display),
-            stylesheet: () => this.engine.stylesheet,
-        });
-        const result = await bridge.install();
+        const result = await this.bridge.install();
         if (!result.ok) {
             new Notice(
                 "Latest MathJax: invasive mode is unavailable on this Obsidian build " +
@@ -410,11 +564,46 @@ export default class LatestMathJaxPlugin extends Plugin {
             await this.saveData(this.settings);
             return;
         }
-        this.bridge = bridge;
         this.invasiveActive = true;
         logger.debug("invasive mode: on");
         this.refreshRenderedSurfaces();
+        // Widgets that rendered before the patch landed keep native output which the rerender
+        // above cannot rebuild (CM6 widgets are only re-created on mount) — migrate those now.
+        this.migrateStaleEditorMath();
     }
+
+    private createBridge(): NativeMathBridge {
+        return new NativeMathBridge({
+            render: (tex, display) => this.invasiveRender(tex, display),
+            stylesheet: () => this.engine.stylesheet,
+        });
+    }
+
+    /**
+     * Replaces native widget output that predates the patch. Runs once per invasive-mode
+     * activation; see `staleMigration.ts` for why a view remount cannot do this job.
+     */
+    private migrateStaleEditorMath(): void {
+        let migrated = 0;
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            const view = leaf.view;
+            if (!(view instanceof MarkdownView)) return;
+            migrated += migrateStaleEditorMath(view, (tex, display) => {
+                const node = this.invasiveRender(tex, display);
+                if (node) return node;
+                // The engine cannot render it: hand the TeX to the (now restored) native
+                // renderer so the user sees Obsidian's own styled output — the same contract
+                // as the coexistence adapters' "fall back to Obsidian" failure mode.
+                return this.bridge?.renderNative(tex, display) ?? null;
+            });
+        });
+        this.lastRemountCount = migrated;
+        if (migrated > 0) {
+            logger.debug(`invasive mode: migrated ${migrated} stale formula(s)`);
+        }
+    }
+
+    private lastRemountCount = 0;
 
     /**
      * The render callback handed to the bridge — the stand-in for Obsidian's native

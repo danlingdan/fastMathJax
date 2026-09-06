@@ -281,6 +281,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     // Sync the switch with the actual outcome: a cancelled confirmation or a
                     // failed install leaves it off even if Obsidian flipped it on visually.
                     toggle.setValue(this.plugin.settings.invasiveMode);
+                    // Re-render so the gated per-surface switches reflect the new mode at once.
+                    if (!invokeModernSettingTabMethod(this, "update")) this.display();
                 });
             });
         });

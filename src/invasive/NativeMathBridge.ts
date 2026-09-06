@@ -8,8 +8,8 @@ import { logger } from "../utils/logger";
  * Feasibility facts this relies on (verified against the Obsidian 1.13.7 app bundle):
  *
  * 1. Obsidian loads MathJax 3 lazily and unconditionally assigns `window.MathJax` just before
- *    the script executes, so pre-seeding a config object is clobbered — patching after
- *    `loadMathJax()` is the only stable hook.
+ *    the script executes, so pre-seeding a config object is clobbered — patching the members is
+ *    the only stable hook.
  * 2. Every native render path (the Reading View post-processor and the Live Preview widget)
  *    funnels through `MathJax.tex2chtml(source, { display })`, and stylesheet syncing funnels
  *    through `MathJax.chtmlStylesheet()`. Both are resolved dynamically on `window` at call
@@ -21,6 +21,11 @@ import { logger } from "../utils/logger";
  *
  * Only these two members are patched. `tex2svg`, `version` and everything else stay native so
  * other plugins keep working, and `uninstall()` restores the original references exactly.
+ *
+ * Timing: a Live Preview widget can render during workspace restore, before the plugin's
+ * layout-ready hook runs. `preinstall()` therefore installs a setter trap on `window.MathJax`
+ * while the plugin loads, so the members are patched the instant the MathJax bundle object
+ * appears — before any caller can reach them. `install()` then only verifies and finalizes.
  */
 
 /** Minimal structural view of the members this bridge touches on Obsidian's native MathJax. */
@@ -35,6 +40,8 @@ export const INVASIVE_SOURCE_ATTR = "data-latest-mathjax-source";
 const INVASIVE_BODY_CLASS = "latest-mathjax-invasive";
 /** Holds the *native* v3 stylesheet while fallback rendering is in use (see `renderNative`). */
 const NATIVE_FALLBACK_STYLE_ID = "latest-mathjax-native-fallback-styles";
+/** Window slot keeping the real native object while the setter trap is active. */
+const TRAP_SLOT = "__latestMathJaxNative";
 
 export type InstallResult = { ok: true } | { ok: false; reason: string };
 
@@ -49,13 +56,26 @@ export interface NativeMathBridgeOptions {
     stylesheet: () => HTMLStyleElement | null;
 }
 
+function windowRef(): Window {
+    return window;
+}
+
 function nativeMathJax(): NativeMathJax | null {
     return (window as unknown as { MathJax?: NativeMathJax }).MathJax ?? null;
+}
+
+function isFullMathJax(value: unknown): value is NativeMathJax {
+    return (
+        typeof value === "object" && value !== null &&
+        typeof (value as NativeMathJax).tex2chtml === "function" &&
+        typeof (value as NativeMathJax).chtmlStylesheet === "function"
+    );
 }
 
 export class NativeMathBridge {
     private readonly options: NativeMathBridgeOptions;
     private installed = false;
+    private trapActive = false;
     private originalTex2chtml: NonNullable<NativeMathJax["tex2chtml"]> | undefined;
     private originalStylesheet: NonNullable<NativeMathJax["chtmlStylesheet"]> | undefined;
 
@@ -76,9 +96,46 @@ export class NativeMathBridge {
     }
 
     /**
-     * Loads Obsidian's MathJax via the public API, then patches the two render entry points.
-     * Fails closed: any structural mismatch returns `{ ok: false }` and leaves the native
-     * renderer untouched, which the plugin treats as "stay in coexistence mode".
+     * Installs the setter trap (or patches immediately if the bundle is already loaded).
+     * Called during plugin `onload`, i.e. before Obsidian renders any math, so the very first
+     * widget render already goes through the bundled engine. Never throws.
+     */
+    preinstall(): void {
+        if (this.installed) return;
+        try {
+            const current = nativeMathJax();
+            if (isFullMathJax(current)) {
+                // MathJax is already loaded (plugin reload / late preinstall): patch directly.
+                this.attach(current);
+                return;
+            }
+            const win = windowRef() as unknown as Record<string, unknown>;
+            Object.defineProperty(window, "MathJax", {
+                configurable: true,
+                get: () => win[TRAP_SLOT],
+                set: (value: unknown) => {
+                    win[TRAP_SLOT] = value;
+                    if (isFullMathJax(value)) {
+                        try {
+                            this.attach(value);
+                        } catch (err) {
+                            // Never break the MathJax bundle evaluation itself.
+                            logger.warn("invasive mode: trap patch failed:", err);
+                        }
+                    }
+                },
+            });
+            this.trapActive = true;
+        } catch (err) {
+            logger.warn("invasive mode: preinstall failed:", err);
+        }
+    }
+
+    /**
+     * Loads Obsidian's MathJax via the public API and makes sure the entry points are patched.
+     * With the trap active this usually just confirms the trap already did the work. Fails
+     * closed: any structural mismatch returns `{ ok: false }` and leaves the native renderer
+     * untouched, which the plugin treats as "stay in coexistence mode".
      */
     async install(): Promise<InstallResult> {
         if (this.installed) return { ok: true };
@@ -88,10 +145,7 @@ export class NativeMathBridge {
             return { ok: false, reason: `loadMathJax() failed: ${describe(err)}` };
         }
         const mj = nativeMathJax();
-        if (!mj) {
-            return { ok: false, reason: "window.MathJax is missing after loadMathJax()" };
-        }
-        if (typeof mj.tex2chtml !== "function" || typeof mj.chtmlStylesheet !== "function") {
+        if (!isFullMathJax(mj)) {
             return {
                 ok: false,
                 reason:
@@ -99,19 +153,53 @@ export class NativeMathBridge {
                     "internal renderer interface has changed",
             };
         }
+        if (!this.attach(mj)) {
+            return { ok: false, reason: "entry points were patched by something else first" };
+        }
+        // If any native renders slipped in before the patch (trap miss on an unexpected
+        // bundle shape), make sure their output is styled: mirror the v3 stylesheet now.
+        this.syncNativeFallbackStyles();
+        logger.debug("invasive mode: native MathJax render entry points patched");
+        return { ok: true };
+    }
+
+    /** Applies the member patch to a full MathJax object. False when that is not possible. */
+    private attach(mj: NativeMathJax): boolean {
+        if (this.installed) return true;
+        if (mj.tex2chtml === this.patchedTex2chtml) return true; // already ours (trap double-fire)
+        if (typeof mj.tex2chtml !== "function" || typeof mj.chtmlStylesheet !== "function") {
+            return false;
+        }
         this.originalTex2chtml = mj.tex2chtml;
         this.originalStylesheet = mj.chtmlStylesheet;
         mj.tex2chtml = this.patchedTex2chtml;
         mj.chtmlStylesheet = this.patchedStylesheet;
         document.body.classList.add(INVASIVE_BODY_CLASS);
         this.installed = true;
-        logger.debug("invasive mode: native MathJax render entry points patched");
-        return { ok: true };
+        this.dropTrap();
+        return true;
+    }
+
+    /** Removes the setter trap once the real patch is in place (or on uninstall). */
+    private dropTrap(): void {
+        if (!this.trapActive) return;
+        try {
+            const win = windowRef() as unknown as Record<string, unknown>;
+            const native = win[TRAP_SLOT];
+            delete (window as unknown as { MathJax?: unknown }).MathJax;
+            if (native !== undefined) {
+                (window as unknown as { MathJax?: unknown }).MathJax = native;
+            }
+            delete win[TRAP_SLOT];
+        } catch (err) {
+            logger.warn("invasive mode: dropping the trap failed:", err);
+        }
+        this.trapActive = false;
     }
 
     /** Restores the original members and every marker this bridge added. Idempotent. */
     uninstall(): void {
-        if (!this.installed) return;
+        this.dropTrap();
         const mj = nativeMathJax();
         if (mj) {
             if (mj.tex2chtml === this.patchedTex2chtml) {
@@ -132,7 +220,7 @@ export class NativeMathBridge {
     /**
      * Renders with the *native* MathJax, bypassing the patch. Used by the plugin's
      * "fall back to Obsidian" failure mode: the one case where MathJax 3 output appears
-     * alongside MathJax 4 output, so its stylesheet is mirrored into a separate element.
+     * alongside MathJax 4 output, so its stylesheet is mirrored — scoped — into the document.
      */
     renderNative(tex: string, display: boolean): HTMLElement | null {
         const original = this.originalTex2chtml;
@@ -176,6 +264,11 @@ export class NativeMathBridge {
      * Mirrors the native v3 stylesheet into the document. The native engine accumulates rules
      * as it renders, but its own flush entry point is patched out — without this mirror, a
      * natively rendered fallback formula would appear with no glyph CSS at all.
+     *
+     * The mirror is scoped to *exclude* containers this plugin rendered: both engines emit the
+     * same `mjx-*` vocabulary with different typesetting metrics, and an unscoped v3 sheet
+     * would re-create the cross-contamination artifacts fixed in 0.3.0, this time against the
+     * MathJax 4 output.
      */
     private syncNativeFallbackStyles(): void {
         const original = this.originalStylesheet;
@@ -187,7 +280,8 @@ export class NativeMathBridge {
             const text = sheet.textContent && sheet.textContent.trim().length > 0
                 ? sheet.textContent
                 : serializeSheet(sheet);
-            if (!text) return;
+            const scoped = scopeNativeCss(text);
+            if (!scoped) return;
             let element = document.getElementById(NATIVE_FALLBACK_STYLE_ID) as
                 | HTMLStyleElement
                 | null;
@@ -196,11 +290,29 @@ export class NativeMathBridge {
                 element.id = NATIVE_FALLBACK_STYLE_ID;
                 document.head.appendChild(element);
             }
-            element.textContent = text;
+            element.textContent = scoped;
         } catch (err) {
             logger.debug("invasive mode: native stylesheet sync failed:", err);
         }
     }
+}
+
+/**
+ * Restricts native v3 CSS rules to containers the plugin did NOT render, and renames its
+ * font families so the two engines' @font-face declarations cannot shadow each other.
+ *
+ * Every v3 CHTML rule is prefixed with `mjx-container`, so rewriting that token with a
+ * `:not()` exclusion keeps the rules from matching MathJax 4 output. The family rename is
+ * essential: v3's `MJXTEX*` / `MJXZERO` @font-face declarations share their names with the
+ * families the v4 output references, and a later same-name declaration wins the cascade —
+ * silently stripping the bundled engine's letter glyphs (observed on desktop, 1.0 pass).
+ * Rules that mention neither token (URLs, sizes) are left untouched. Exported for tests.
+ */
+export function scopeNativeCss(css: string): string {
+    if (!css) return "";
+    return css
+        .replace(/MJX((?:TEX|ZERO)[A-Z0-9-]*)/g, "MJXNV$1")
+        .replace(/mjx-container(?![\w-])/g, "mjx-container:not([data-latest-mathjax-engine])");
 }
 
 function serializeSheet(sheet: HTMLStyleElement): string {

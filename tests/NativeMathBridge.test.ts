@@ -7,6 +7,7 @@ vi.mock("obsidian", () => ({ loadMathJax }));
 import {
     INVASIVE_SOURCE_ATTR,
     NativeMathBridge,
+    scopeNativeCss,
 } from "../src/invasive/NativeMathBridge";
 
 type Patchable = { tex2chtml?: unknown; chtmlStylesheet?: unknown; [key: string]: unknown };
@@ -86,7 +87,7 @@ describe("NativeMathBridge", () => {
         setNativeMathJax(null);
         const missing = await new NativeMathBridge({ render: rendering, stylesheet: () => null }).install();
         expect(missing.ok).toBe(false);
-        if (!missing.ok) expect(missing.reason).toContain("missing");
+        if (!missing.ok) expect(missing.reason).toContain("does not expose");
 
         setNativeMathJax({ chtmlStylesheet: () => document.createElement("style") });
         const partial = await new NativeMathBridge({ render: rendering, stylesheet: () => null }).install();
@@ -120,11 +121,28 @@ describe("NativeMathBridge", () => {
 
         expect(node).toBe(nativeNode);
         expect(originalTex).toHaveBeenCalledWith("\\bad", { display: false });
-        // The native stylesheet must be mirrored, or the fallback formula renders unstyled.
+        // The native stylesheet must be mirrored, or the fallback formula renders unstyled —
+        // and it must be scoped so v3 CSS cannot hit the plugin's own MathJax 4 output (0.3.0).
         const mirrored = document.getElementById("latest-mathjax-native-fallback-styles");
-        expect(mirrored?.textContent).toContain("mjx-container");
+        expect(mirrored?.textContent)
+            .toContain("mjx-container:not([data-latest-mathjax-engine])");
+        expect(mirrored?.textContent).not.toMatch(/(^|[\s>])mjx-container[\s[.]/);
         bridge.uninstall();
         expect(document.getElementById("latest-mathjax-native-fallback-styles")).toBeNull();
+    });
+
+    it("scopes native CSS to non-plugin containers without touching unrelated rules", () => {
+        const css = [
+            'mjx-container[jax="CHTML"] { line-height: 0; }',
+            "mjx-container { display: block; }",
+            'mjx-container[jax="CHTML"] mjx-mi { font-size: 70%; }',
+            '@font-face { font-family: MJXCHTML; src: url("x.woff2"); }',
+        ].join("\n");
+        const scoped = scopeNativeCss(css);
+        expect(scoped).toContain('mjx-container:not([data-latest-mathjax-engine])[jax="CHTML"]');
+        expect(scoped).toContain("mjx-container:not([data-latest-mathjax-engine]) { display: block; }");
+        expect(scoped).toContain("src: url(\"x.woff2\")");
+        expect(scoped.match(/mjx-container(?![\w:-])/g)).toBeNull();
     });
 
     it("tolerates a throwing render callback by using the native fallback", async () => {
