@@ -1,22 +1,43 @@
 # Compatibility
 
-| Surface | Status in 0.4.0 | Behavior |
-| --- | --- | --- |
-| Reading View | Supported | Re-renders inline and display math from exact section source |
-| Live Preview | Supported (opt-in) | Re-renders mounted Obsidian math widgets; source remains editable at the cursor |
-| Popout windows | Supported | Uses the same adapters and copies engine styles per document |
-| PDF export | Supported | Uses the private engine with embedded SVG glyphs from either Live Preview or Reading View |
-| Hover Preview | Not supported | Post-processors run there, but section info is always null; a `sourcePath` fallback would add a third whole-note path whose transient popover lifecycle cannot be bounded as tightly as PDF export (evaluated 0.4.0, COMP-02) |
-| Canvas | Not supported | The public Obsidian API (typings 1.13.1) exposes no canvas rendering classes; every community approach patches internals, which this plugin does not do (evaluated 0.4.0, COMP-02) |
+| Surface | Default mode (0.x behavior) | Invasive mode (1.0, opt-in) | Behavior |
+| --- | --- | --- | --- |
+| Reading View | Supported | Supported | Default: re-renders inline and display math from exact section source. Invasive: Obsidian's native pipeline renders through the patched entry point, no per-section takeover needed |
+| Live Preview | Supported (opt-in) | Supported | Default: re-renders mounted Obsidian math widgets. Invasive: the native widget path renders through the patched entry point |
+| Popout windows | Supported | Supported | Both modes mirror the engine's live stylesheet (CSSOM kept in sync with the element text) into each popout document; local font URLs are rewritten to the CDN there because popout documents live at a null origin and cannot fetch `app://` resources |
+| PDF export | Supported | Supported | Private SVG engine with embedded glyphs, routed from either editor mode; invasive `.print` detection sends export re-renders to the same engine |
+| Hover preview | Not supported | **Supported** | Default-mode analysis (COMP-02, 0.4.0) still holds for the public API. Invasive mode covers the popover automatically because it renders through the same patched native entry points |
+| Embeds | Not supported | **Supported** | Same mechanism as hover preview |
+| Canvas | Not supported | Not supported | The public Obsidian API (typings 1.13.1) exposes no canvas rendering classes; every community approach patches internals beyond the two members invasive mode touches (COMP-02) |
+
+## Invasive mode contract
+
+Off by default; enabling requires confirming a dialog that lists benefits (every surface on
+MathJax 4.1.3, single engine, macro coverage for hover/embeds) and risks (depends on two
+internal functions that an Obsidian update may change, behavioral differences vs. plugins that
+render with native MathJax 3, experimental status). While active:
+
+- `MathJax.tex2chtml` and `MathJax.chtmlStylesheet` are replaced; nothing else on the global is
+  touched (`tex2svg`, `version`, other plugins' entry points stay native).
+- A runtime feature guard verifies both entry points exist and are functions. If the guard fails
+  (Obsidian update), the plugin shows a notice, reverts the setting and stays in default mode —
+  rendering never breaks.
+- Disabling the mode, disabling or uninstalling the plugin restores the original members
+  byte-for-byte, removes the trap and every marker, and re-renders each formula the plugin
+  produced back to Obsidian's own output (the TeX is stamped on every invasive container).
+- Behavioral note: Obsidian's own `$…$` span detection applies unchanged in invasive mode, so
+  currency-like sequences (`$5 and $6`) pair the same way they do without the plugin (verified
+  against native output); the default mode's stricter scanner no longer applies there.
 
 Both output renderers, CommonHTML and SVG, are first-class: the core engine paths —
 rendering and cache cloning, TeX parse errors, preamble macros, popout adoption and style
 copy, assistive MathML emission — are covered by automated tests in both modes, and the
 matrix passed desktop acceptance on Obsidian 1.13.7 (Windows) across Reading View, opt-in
-Live Preview, fallback behavior and settings toggles, including renderer switching.
+Live Preview, hover preview, popouts, PDF export, fallback behavior and settings toggles,
+including renderer switching and invasive-mode on/off cycles.
 
 The plugin requires Obsidian 1.8.0 or newer and was acceptance-tested on Obsidian 1.13.7 for
-Windows. Version 0.4.0 keeps `minAppVersion` at 1.8.0.
+Windows. Version 1.0.0 keeps `minAppVersion` at 1.8.0.
 
 Version 0.1.4 introduced searchable declarative settings on Obsidian 1.13 and newer.
 Obsidian 1.8–1.12 continues to use the equivalent imperative settings tab, so this

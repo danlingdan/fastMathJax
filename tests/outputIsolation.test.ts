@@ -50,7 +50,7 @@ describe("MathJax output isolation", () => {
             expect(cached.querySelector("latest-mjx-frac")).not.toBeNull();
             expect(cached.querySelector("mjx-c")).toBeNull();
             expect(cached.ownerDocument).toBe(popout);
-            expect(popout.getElementById("latest-mathjax-chtml-styles")?.textContent)
+            expect(popout.querySelector("[id^=latest-mathjax-chtml-styles]")?.textContent)
                 .toContain("latest-mjx-sqrt > latest-mjx-box");
             expect(engine.stats.cache.hits).toBe(1);
         } finally {

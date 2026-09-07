@@ -127,16 +127,34 @@ A smaller bundle is not accepted if it requires replacing `window.MathJax`, sile
 support, depends on unavailable runtime modules, or reintroduces missing glyph chunks. If no safe
 option materially improves size, a release documents that result instead of forcing a rewrite.
 
+**1.0 exception (explicit, decided 2026-09-07):** the rule's `window.MathJax` clause covers
+*unrequested* replacement. Invasive mode patches exactly two members (`tex2chtml`,
+`chtmlStylesheet`) of the native object and only behind a user-confirmed warning dialog, with a
+runtime feature guard, automatic fail-closed fallback to the default mode, and byte-exact member
+restoration on disable/uninstall. Silent, unconditional or broader global mutation remains
+prohibited; the exception is scoped to `src/invasive/` and its documented contract in the README.
+
 ## `1.0.0` — stable contract
+
+Delivered scope: the **invasive mode** line (INV-01…07) plus the six stable-contract items below.
+All desktop-accepted on Obsidian 1.13.7 (Windows); dual-mode benchmark evidence in
+[`docs/benchmarks.md`](benchmarks.md).
 
 | ID | Priority | Work item | Estimate | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| API-01 | P0 | Freeze and document persisted settings semantics | M | Defaults, ranges, migrations and rollback behavior are documented and covered by tests |
-| LIFE-01 | P0 | Verify complete enable/disable/uninstall cleanup | M | No plugin stylesheet, listener, timer, observer or global mutation remains after unload |
-| UPG-01 | P0 | Exercise clean install and every supported upgrade path | L | Settings and rendering survive upgrades from each supported minor release; corrupt data normalizes safely |
+| INV-01 | P0 | Feasibility spike: native render entry points | S | ✅ Done 2026-09-07 — asar-verified that every native path funnels through dynamic `MathJax.tex2chtml`/`chtmlStylesheet` lookups; patching those two members takes over all surfaces |
+| INV-02 | P0 | Enable-time warning dialog | S | ✅ Benefits and risks listed; enable only on confirm, cancel reverts the toggle; shared by both settings UIs |
+| INV-03 | P0 | Setting, hot toggle, surface gating | M | ✅ `invasiveMode` default off; hot toggle through the settings funnel; per-surface toggles disabled with "managed by invasive mode" while active |
+| INV-04 | P0 | Native bridge and render facade | M | ✅ Patch/unpatch of exactly two members with feature guard; facade reuses the engine (cache, revision stamps, preamble macros, fallback modes, print routing to the SVG engine); unload re-renders stamped containers back to native output |
+| INV-05 | P1 | Cross-document style and font delivery | M | ✅ Popout documents mirror the engine's live CSSOM (text kept in sync after CSSOM rule insertions), layout changes and renders re-sync mirrors, and local font URLs are rewritten to the CDN for null-origin popout documents |
+| INV-06 | P1 | Engine isolation switch | S | ✅ `isolationEnabled` config gates tag renaming and selector scoping; default mode unchanged |
+| INV-07 | P0 | Lifecycle hardening and failure injection | M | ✅ Cold start with mode on (setter trap), delete-`tex2chtml` degrade with automatic revert and full trap teardown, partial native object preserved, disable/uninstall leaves no patch, trap slot, style or listener behind |
+| API-01 | P0 | Freeze and document persisted settings semantics | M | Defaults, ranges, migrations and rollback behavior are documented in [`docs/settings.md`](settings.md) and covered by tests |
+| LIFE-01 | P0 | Verify complete enable/disable/uninstall cleanup | M | ✅ Disable with invasive on restores native rendering (verified live); no plugin stylesheet, listener, timer, observer or global mutation remains after unload (plugin-disabled DOM audit: zero residual style elements) |
+| UPG-01 | P0 | Exercise clean install and every supported upgrade path | L | Settings and rendering survive upgrades from each supported minor release; corrupt `data.json` normalizes safely |
 | QA-01 | P0 | Complete two consecutive release-candidate acceptance passes | L | No open P0 defect and no unexplained runtime console error remains |
-| DOC-02 | P0 | Publish stable user, troubleshooting and maintainer documentation | M | Installation, settings, macros, offline use, compatibility, diagnostics and release operation are covered |
-| REL-03 | P0 | Verify final automated release and rollback procedure | M | CI, release assets, provenance and previous-version rollback are repeatable from documented commands |
+| DOC-02 | P0 | Publish stable user, troubleshooting and maintainer documentation | M | README (default isolation + explicit invasive opt-in), compatibility matrix, settings reference, offline fonts, benchmarks and this roadmap updated for 1.0 |
+| REL-03 | P0 | Verify final automated release and rollback procedure | M | CI publishes the three assets with provenance from a plain SemVer tag; previous-version rollback drill executed |
 
 ## Release gates
 

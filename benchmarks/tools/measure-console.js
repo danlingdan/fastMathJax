@@ -22,7 +22,13 @@
     }
 
     const PLUGIN_ATTR = "[data-latest-mathjax]";
-    const countPlugin = () => document.querySelectorAll(PLUGIN_ATTR).length;
+    /**
+     * Invasive mode (1.0) gates the coexistence wrapper attributes off; there the equivalent
+     * unit is the engine-stamped mjx-container the patched native entry point emits.
+     */
+    const countPlugin = () => document.body.classList.contains("latest-mathjax-invasive")
+        ? document.querySelectorAll("mjx-container[data-latest-mathjax-engine]").length
+        : document.querySelectorAll(PLUGIN_ATTR).length;
     const countObsidianMath = () => document.querySelectorAll(".math.math-block, .math.math-inline").length;
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const mdLeaves = () => window.app.workspace.getLeavesOfType("markdown").filter((leaf) => !leaf.isDetached && leaf.view && leaf.view.getMode);

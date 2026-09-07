@@ -14,6 +14,20 @@ export const MATHJAX_FONT_VERSION = "4.1.3";
 export const DEFAULT_FONT_URL =
     `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-newcm-font@${MATHJAX_FONT_VERSION}/chtml/woff2`;
 
+/**
+ * Rewrites the active font URL base to the bundled CDN default for cross-document copies.
+ *
+ * Popout windows live at a null `about:blank` origin, and Obsidian's `app://` protocol handler
+ * rejects font fetches from there — faces error out and letters fall back to fonts without the
+ * Mathematical Alphanumeric Symbols block. The host document keeps its local URLs (offline
+ * rendering unaffected); only the mirrored stylesheet points back at the CDN. No-op when the
+ * engine already runs on the CDN base.
+ */
+export function mirrorFontUrls(css: string, fontURL: string): string {
+    if (fontURL === DEFAULT_FONT_URL) return css;
+    return css.split(fontURL).join(DEFAULT_FONT_URL);
+}
+
 export type RendererKind = "chtml" | "svg";
 
 /**

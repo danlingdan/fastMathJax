@@ -1,10 +1,10 @@
 {
   "id": "latest-mathjax",
   "name": "Latest MathJax",
-  "version": "0.5.0",
   "minAppVersion": "1.8.0",
   "description": "Render math with a bundled, up-to-date MathJax 4 engine without replacing the built-in renderer.",
   "author": "HuaJiaHao",
   "authorUrl": "https://github.com/danlingdan",
-  "isDesktopOnly": true
+  "isDesktopOnly": true,
+  "version": "1.0.0"
 }

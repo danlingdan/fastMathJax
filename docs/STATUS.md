@@ -1,10 +1,53 @@
 # Project status
 
-Latest MathJax `0.5.0` is feature-complete and desktop-accepted pending manual font verification;
-the tag build is the remaining step. It remains desktop-only until a separate mobile acceptance
-pass is completed.
+Latest MathJax `1.0.0` adds the experimental **invasive mode** (off by default, confirmation
+dialog gated) on top of the complete stable-contract line; see the release section below. The
+plugin remains desktop-only until a separate mobile acceptance pass is completed.
 
-## 0.5.0 — offline font handling (release candidate, 2026-09-07)
+## 1.0.0 — invasive mode + stable contract (release candidate, 2026-09-08)
+
+Scope: the invasive mode line (INV-01…07, `docs/ROADMAP.md`) plus API-01, LIFE-01, UPG-01,
+QA-01, DOC-02 and REL-03.
+
+**Invasive mode.** An explicit opt-in (warning dialog listing benefits and risks, both settings
+UIs share one confirmation flow) replaces exactly two internal entry points of Obsidian's native
+MathJax — `tex2chtml` and `chtmlStylesheet`, chosen after an asar-verified spike showed every
+native render path funnels through them. Hover previews, embeds and every other surface
+therefore render with the bundled MathJax 4.1.3; nothing else on `window.MathJax` is touched.
+The runtime feature guard degrades fail-closed: an Obsidian update that removes either entry
+point shows a notice and reverts to the default mode with the bridge fully torn down (verified
+by deleting `tex2chtml` live). Disable/uninstall restores the original members byte-for-byte
+and hands each rendered formula's stamped TeX back to Obsidian's own renderer.
+
+**Popout style and font delivery (found during the desktop pass).** Three defects fixed:
+(1) MathJax inserts adaptive glyph rules through the CSSOM after the persistent stylesheet
+mounts, so the element text went permanently stale and every text-based cross-document copy
+(popout clones, print window) mounted formulas whose letter rules were missing — the element
+text is now re-serialized from the live CSSOM whenever the rule count changes; (2) moving a
+leaf into a popout runs no post-processor, so mirrors never refreshed — layout changes and
+invasive renders now re-mirror every open document (debounced); (3) local-mode font URLs
+(`app://…`) cannot be fetched from a popout's null origin — faces errored and letters fell
+back — so mirrors rewrite font URLs to the CDN while the host document keeps local URLs.
+
+**Verification.** 176 tests across 25 files, lint, typecheck, production build and release
+metadata validation all green. Desktop matrix on Obsidian 1.13.7 (Windows): Reading View /
+Live Preview / hover preview / popouts (Reading + LP) / PDF export (exported file inspected
+via Poppler) × CHTML/SVG routing × invasive on/off; cold start with the mode on; on→off→on
+cycles through the real settings UI with both dialog paths; plugin disable/enable with native
+restore and zero residual style elements; failure injection; dual-mode benchmarks recorded in
+[`docs/benchmarks.md`](benchmarks.md) — invasive mode cuts open cost 16–18 % with a much
+tighter p95, typing and view-switch at parity. Known pre-existing issue (bisected to ≤ 0.5.0,
+documented there): in default mode, formulas whose macros come only from the preamble file can
+keep Obsidian's error output in Reading View because their wrappers are created after the
+section's single post-processor pass; invasive mode renders them correctly.
+
+Stable contract: settings semantics frozen in [`docs/settings.md`](settings.md) (API-01);
+LIFE-01 verified live (no residual styles/patch/trap after disable); UPG-01 migration
+normalization pinned by tests and exercised on the desktop; DOC-02 done (README dual-mode
+rewrite, compatibility matrix, settings reference, benchmarks); QA-01/REL-03 are the release
+steps this candidate enters.
+
+## 0.5.0 — offline font handling (released 2026-09-07)
 
 Scope narrowed by decision: 0.5.0 ships the font line only (FONT-01, FONT-02); the size and
 trust-boundary items (SIZE-01/02/03, SEC-01) returned to the roadmap backlog.
@@ -30,7 +73,7 @@ Gates: 145 tests across 20 files, lint, typecheck, production build, release met
 Desktop font verification (local mode download, offline reload, airplane-mode SVG) is the manual
 step before tagging.
 
-Release: pending tag `0.5.0`.
+Release: tagged `0.5.0` (2026-09-07).
 
 ## 0.4.0 — compatibility and accessibility (released 2026-09-07)
 

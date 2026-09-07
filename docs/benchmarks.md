@@ -132,3 +132,51 @@ fresh at startup). Fixed on `main`: `saveSettings` now re-reads the file when th
 changed before rebuilding the engine, and a preamble content change invalidates the lazily
 created PDF export engine. Desktop-verified by switching between the two files via
 `saveSettings` alone — both files' macros render immediately, with no diagnostics.
+
+## Results (recorded 2026-09-08, Obsidian 1.13.7, plugin 1.0.0-rc — dual mode)
+
+Machine profile: identical to the 0.2.0 pass above (same machine, same Obsidian build, same
+settings profile including `preambleFile: benchmark-preamble.tex` and the local font cache
+serving woff2 from the vault). Both legs measured back-to-back in a single-window session;
+the plugin hot-toggled between modes through the settings funnel, warm runs n=10, cold runs
+after `engine.clearCache()` (n=1 per file).
+
+### Coexistence mode (invasive OFF) vs invasive mode (1.0), median / p95
+
+| Scenario | Coexistence | Invasive | Quiet gate |
+| --- | --- | --- | --- |
+| Open Reading, 100 formulas | 710.2 / 974.7 | **583.8 / 609.2** | 250 |
+| Open Reading, 500 formulas | 1656.4 / 1857.4 | **1393.8 / 1516.7** | 250 |
+| Typing in math-free anchor, 100 | 556.7 / 878.7 | 560.6 / 836.7 | 300 |
+| View switch (Reading ↔ LP), 100 | 595.3 / 609.5 | 592.8 / 606.9 | 300 |
+| Scroll-through total, 100 (steps) | 1228.2 (4) | 1556.7 (5) | 250 per step |
+| Scroll-through total, 500 (steps) | 5337.7 (16) | 7456.6 (23) | 250 per step |
+| Cold open, 100 / 500 | 869.6 / 1691.7 | **727.9 / 1671.6** | 400 |
+
+Typing produced zero formula churn in all 20 runs per mode. Wrapper counts are mode-aware
+(harness updated: coexistence counts `data-latest-mathjax` wrappers, invasive counts
+engine-stamped `mjx-container` elements).
+
+Findings:
+
+- **Open cost drops 16–18 % in invasive mode and the p95 tightens dramatically** (974.7 → 609.2
+  on 100 formulas). The native pipeline skips the per-section settle wait and the second
+  (post-processor) render pass entirely — every formula renders exactly once, through the
+  patched entry point, and the mode has no cross-renderer races to wait out.
+- **Scroll-through totals are NOT directly comparable across modes** because the two engines
+  produce slightly different formula heights: walking the same 500-formula note costs 16
+  viewports in coexistence mode but 23 in invasive mode. Per-viewport cost is equivalent
+  (≈ 334 ms/step coexistence vs ≈ 324 ms/step invasive, of which 250 ms is the quiet gate).
+  The 0.2.0 table above shows the same effect across window sizes (12 steps then vs 4–5 now).
+- **Typing and view-switch latency are at parity** (within 1 %): invasive mode adds no
+  per-keystroke work, and the debounce + quiet instrumentation floor dominates both modes.
+- **Sanity gate:** the invasive leg passes fully (macros render, no raw leaks, invalid TeX
+  left to Obsidian's renderer). The coexistence leg reports `macrosRendered: false` — a
+  **pre-existing issue, verified by building and testing plugin 0.5.0 from its tag in the
+  same vault: identical failure**. Root cause: a formula whose macro is undefined in
+  Obsidian's native MathJax produces its error wrapper *after* the section's single
+  post-processor pass has already run, so the plugin never re-renders that wrapper (the
+  engine itself renders the macros fine — `renderInto("\\benchSpeedOfLight")` returns
+  "299 792 458 m/s"). Invasive mode is immune because its render path re-enters the patched
+  entry point on every native pass. Filed as INV-backlog; the 1.0 release notes should point
+  users who rely on file-backed preamble macros in Reading View at invasive mode.

@@ -38,6 +38,14 @@ export interface EnsureResult {
 const MANIFEST_NAME = "manifest.json";
 /** First four bytes of every woff2 file; anything else is not a font we wrote. */
 const WOFF2_MAGIC = 0x77_4f_46_32;
+/**
+ * Manifest marker for a name the pinned source does not ship at all (HTTP 404). MathJax
+ * 4.1.3's NewCM stylesheet references a few variant faces (`dvb`, `dvi`, `dvbi`, `abb`,
+ * `abbi`) whose woff2 files were never published; treating them as a hard failure would
+ * disable the whole local cache for notes that merely *mention* those variants. Recorded
+ * so later runs skip the pointless re-fetch; no file is written for them.
+ */
+const UNAVAILABLE = -1;
 
 /**
  * On-disk cache of the CommonHTML woff2 glyph files, enabling offline use of the CHTML renderer.
@@ -78,17 +86,21 @@ export class LocalFontCache {
             await this.deps.adapter.mkdir(dir);
             const cached = await this.readManifest(dir);
             const missing = [...new Set(fileNames)].filter((name) => !(name in cached));
-            if (missing.length === 0) {
-                return { ok: true, resourceDir, downloaded: 0 };
-            }
-
             let downloaded = 0;
             for (const name of missing) {
                 if (this.disposed) {
                     return { ok: false, resourceDir: null, downloaded, error: "cancelled" };
                 }
                 const data = await this.fetchFile(name);
-                if (!data) {
+                if (data === "unavailable") {
+                    // The pinned source does not ship this name; remember that so the cache
+                    // stays usable. Nothing references the face's glyphs in practice, and the
+                    // browser falls back exactly as it does in CDN mode.
+                    cached[name] = UNAVAILABLE;
+                    await this.writeManifest(dir, cached);
+                    continue;
+                }
+                if (data === null) {
                     return {
                         ok: false,
                         resourceDir: null,
@@ -101,7 +113,9 @@ export class LocalFontCache {
                 await this.writeManifest(dir, cached);
                 downloaded++;
             }
-            logger.debug(`local font cache: downloaded ${downloaded} file(s) into ${dir}`);
+            if (downloaded > 0) {
+                logger.debug(`local font cache: downloaded ${downloaded} file(s) into ${dir}`);
+            }
             return { ok: true, resourceDir, downloaded };
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -142,10 +156,17 @@ export class LocalFontCache {
         await this.deps.adapter.write(`${dir}/${MANIFEST_NAME}`, JSON.stringify(manifest));
     }
 
-    /** Fetches one file and validates it; returns null instead of throwing. */
-    private async fetchFile(name: string): Promise<ArrayBuffer | null> {
+    /**
+     * Fetches one file and validates it. Returns `"unavailable"` when the pinned source
+     * answers 404 (the font package does not ship this name), `null` for transient failures,
+     * and the bytes otherwise.
+     */
+    private async fetchFile(
+        name: string,
+    ): Promise<ArrayBuffer | "unavailable" | null> {
         try {
             const response = await this.fetchImpl(`${this.deps.sourceRoot}/${name}`);
+            if (response.status === 404) return "unavailable";
             if (!response.ok) return null;
             const data = await response.arrayBuffer();
             if (data.byteLength <= 4) return null;

@@ -15,6 +15,7 @@ import {
     type EngineConfig,
     configHash,
     defaultEngineConfig,
+    mirrorFontUrls,
     needsRebuild,
     type PreambleSegment,
 } from "./MathJaxConfig";
@@ -77,6 +78,27 @@ export function describeMathError(err: unknown): string {
 }
 
 const STYLE_ELEMENT_ID = "latest-mathjax-chtml-styles";
+/**
+ * Dedicated element holding ONLY the engine's `@font-face` rules.
+ *
+ * The adaptive glyph stylesheet is regenerated and replaced on every flush, and a flush that
+ * lands at the wrong moment (rebuild, engine swap, another window's engine build in a popout)
+ * can present a sheet whose font faces do not cover glyphs that are already mounted — the
+ * affected letters then fall back to fonts without the Mathematical Alphanumeric Symbols
+ * block and vanish. Copying the faces into this element, which is created once per build and
+ * never replaced by the flush machinery, makes them independent of that churn. Exported id
+ * for tests.
+ */
+export const FONT_FACE_ELEMENT_ID = "latest-mathjax-font-faces";
+/**
+ * All engines in this JS context (the main window's instance and the private PDF engine) can be
+ * alive at once and must not evict each other's stylesheets: an adaptive sheet only covers the
+ * glyphs its own engine has rendered, so sharing one element id would randomly replace a mounted
+ * sheet with one missing the other engine's faces. Obsidian popout windows are separate JS
+ * realms that render through this main-window engine (the app object is injected into them), so
+ * uniqueness comes from a module-level counter.
+ */
+let engineSequence = 0;
 
 /**
  * Tags rendered output with the engine revision that produced it.
@@ -126,8 +148,20 @@ export class MathJaxEngine {
         | SVG<HTMLElement, Text, Document>
         | null = null;
     private styleNode: HTMLStyleElement | null = null;
+    private fontFaceNode: HTMLStyleElement | null = null;
+    /** Accumulated `@font-face` rules by family; grows monotonically, never shrinks. */
+    private readonly fontFaceRules = new Map<string, string>();
+    private fontFaceCss = "";
+    private readonly styleElementId = `${STYLE_ELEMENT_ID}-${++engineSequence}`;
+    private readonly fontFaceElementId = `${FONT_FACE_ELEMENT_ID}-${engineSequence}`;
+    /** Element id carrying this instance's adaptive glyph rules (exposed for tests). */
+    get styleId(): string {
+        return this.styleElementId;
+    }
     private styleFlushHandle: number | null = null;
     private styleFlushFallback: number | null = null;
+    /** Rule count captured the last time the live sheet was serialized into the element text. */
+    private serializedRuleCount = -1;
     private cache: MathCache;
     private renders = 0;
     private configRevision = 0;
@@ -208,6 +242,8 @@ export class MathJaxEngine {
                       displayAlign: "center",
                       displayIndent: "0",
                       // Only emit CSS for constructs actually used; keeps the injected stylesheet small.
+                      // The @font-face rules are additionally mirrored into a dedicated, never-replaced
+                      // element — see FONT_FACE_ELEMENT_ID.
                       adaptiveCSS: true,
                   });
 
@@ -450,18 +486,120 @@ export class MathJaxEngine {
                 // leave freshly rendered glyphs without their rules.
                 this.styleNode?.remove();
                 this.styleNode = sheet;
-                sheet.id = STYLE_ELEMENT_ID;
+                sheet.id = this.styleElementId;
                 document.head.appendChild(sheet);
                 // Now that it is connected, insert any pending adaptive rules.
                 this.outputJax.styleSheet(this.doc);
+                this.serializedRuleCount = -1;
             }
             if (sheet.sheet && this.config.isolationEnabled) {
                 isolateStyles(sheet.sheet.cssRules);
+                this.serializedRuleCount = -1;
             }
+            this.syncSerializedStyles(sheet);
+            this.syncFontFaces(sheet);
         } catch (err) {
             // A stylesheet problem must never take rendering down; the next flush retries.
             logger.debug("stylesheet flush failed:", err);
         }
+    }
+
+    /**
+     * Folds the live CSSOM rule set back into the element's text after every change.
+     *
+     * MathJax inserts adaptive glyph rules through `sheet.insertRule` once the element is
+     * connected, which leaves `textContent` permanently stale. Every cross-document consumer —
+     * Obsidian clones this element into popout windows and the PDF print window, and `cloneNode`
+     * copies only the text — would then mount formulas whose glyph rules are missing: letters
+     * render as nothing while BMP operators survive via system fallback fonts. Re-serializing
+     * whenever the rule count changes keeps the text a complete snapshot of the sheet.
+     */
+    private syncSerializedStyles(sheet: HTMLStyleElement): void {
+        const live = sheet.sheet;
+        if (!live) return;
+        const count = live.cssRules.length;
+        if (count === 0 || count === this.serializedRuleCount) return;
+        const serialized = Array.from(live.cssRules, (rule) => rule.cssText).join("\n");
+        // Guard against lossy CSSOM implementations — jsdom's cssstyle drops the `src`
+        // declaration inside @font-face — so a serialization that would strip font sources
+        // from every cross-document copy never lands. Real browsers round-trip losslessly.
+        const liveUrls = serialized.match(/url\(/g)?.length ?? 0;
+        const textUrls = sheet.textContent.match(/url\(/g)?.length ?? 0;
+        if (liveUrls < textUrls) return;
+        sheet.textContent = serialized;
+        this.serializedRuleCount = count;
+    }
+
+    /**
+     * Starts fetching every registered-but-unfetched font face in `doc`.
+     *
+     * Font faces load lazily when the browser decides text needs them, and that trigger is
+     * not reliable in every document an Obsidian popout renders into — faces were observed
+     * stuck at "unloaded" while mounted formulas referenced them, leaving letter glyphs
+     * invisible (operators survive via system fonts). Kicking off `FontFace.load()` for each
+     * face makes rendering deterministic; the calls are no-ops once a face is loading/loaded.
+     */
+    private triggerFontLoads(doc: Document): void {
+        try {
+            const faces = Array.from(
+                doc.fonts as unknown as Iterable<
+                    { family: string; status: string; load(): Promise<unknown> }
+                >,
+            );
+            for (const face of faces) {
+                if (face.status === "unloaded" && face.family.includes("NCM")) {
+                    void face.load().catch(() => undefined);
+                }
+            }
+        } catch {
+            // Best effort only; the browser's lazy loading remains as fallback.
+        }
+    }
+
+    /**
+     * Mirrors the engine's `@font-face` rules into the dedicated persistent element.
+     *
+     * The adaptive glyph sheet is regenerated per flush and its face set follows recent
+     * usage — a flush after a small render can present a sheet with only a handful of the
+     * faces that already-mounted output depends on. The capture therefore MERGES: a face
+     * once seen is kept for the engine's lifetime, so the persistent element always covers
+     * every glyph the engine has ever rendered.
+     */
+    private syncFontFaces(sheet: HTMLStyleElement): void {
+        const rules = sheet.sheet?.cssRules;
+        let changed = false;
+        if (rules) {
+            for (const rule of Array.from(rules)) {
+                if (!(rule instanceof CSSFontFaceRule)) continue;
+                const family = (rule as CSSFontFaceRule).style
+                    .getPropertyValue("font-family")
+                    .trim();
+                if (!family) continue;
+                const css = rule.cssText;
+                if (this.fontFaceRules.get(family) !== css) {
+                    this.fontFaceRules.set(family, css);
+                    changed = true;
+                }
+            }
+        }
+        if (this.fontFaceRules.size === 0) return;
+        if (!changed && this.fontFaceNode && this.fontFaceCss) {
+            this.triggerFontLoads(document);
+            return;
+        }
+        this.fontFaceCss = [...this.fontFaceRules.values()].join("\n");
+        if (!this.fontFaceNode) {
+            this.fontFaceNode = document.getElementById(
+                this.fontFaceElementId,
+            ) as HTMLStyleElement | null;
+            if (!this.fontFaceNode) {
+                this.fontFaceNode = document.createElement("style");
+                this.fontFaceNode.id = this.fontFaceElementId;
+                document.head.appendChild(this.fontFaceNode);
+            }
+        }
+        this.fontFaceNode.textContent = this.fontFaceCss;
+        this.triggerFontLoads(document);
     }
 
     /**
@@ -499,19 +637,47 @@ export class MathJaxEngine {
      * Serialize the live rule list instead, and refresh an existing target sheet after every render.
      * This matters for PDF export: Obsidian copies styles into a temporary print window before it
      * renders the note, so a one-time snapshot can contain none of the adaptive glyph rules.
+     *
+     * Local font URLs are rewritten to the CDN base in the copy: popout documents live at a
+     * null `about:blank` origin, and the `app://` protocol handler rejects font fetches from
+     * there (faces error out and every letter falls back to a font without the Mathematical
+     * Alphanumeric Symbols block). The host document keeps the local URLs — only the mirror
+     * changes, so offline rendering in the main window is unaffected.
      */
     ensureStyles(targetDoc: Document): void {
         if (targetDoc === document) return;
         this.flushStyles();
         if (!this.styleNode) return;
-        const css = this.serializedStyles();
-        let target = targetDoc.getElementById(STYLE_ELEMENT_ID) as HTMLStyleElement | null;
+        const css = this.mirrorCss(this.serializedStyles());
+        let target = targetDoc.getElementById(this.styleElementId) as HTMLStyleElement | null;
         if (!target) {
             target = targetDoc.createElement("style");
-            target.id = STYLE_ELEMENT_ID;
+            target.id = this.styleElementId;
             targetDoc.head.appendChild(target);
         }
         target.textContent = css;
+        // The copied glyph sheet is adaptive and can lack faces; mirror the dedicated
+        // font-face element as well so glyphs keep their fonts in every document.
+        if (this.fontFaceCss) {
+            let faces = targetDoc.getElementById(this.fontFaceElementId) as
+                | HTMLStyleElement
+                | null;
+            if (!faces) {
+                faces = targetDoc.createElement("style");
+                faces.id = this.fontFaceElementId;
+                targetDoc.head.appendChild(faces);
+            }
+            faces.textContent = this.mirrorCss(this.fontFaceCss);
+        }
+        this.triggerFontLoads(targetDoc);
+    }
+
+    /**
+     * Rewrites the active (possibly local) font URL base to the bundled CDN default for
+     * cross-document copies. No-op when the engine already runs on the CDN base.
+     */
+    private mirrorCss(css: string): string {
+        return mirrorFontUrls(css, this.config.fontURL);
     }
 
     private serializedStyles(): string {
@@ -535,6 +701,11 @@ export class MathJaxEngine {
         }
         this.styleNode?.remove();
         this.styleNode = null;
+        this.serializedRuleCount = -1;
+        this.fontFaceNode?.remove();
+        this.fontFaceNode = null;
+        this.fontFaceRules.clear();
+        this.fontFaceCss = "";
         // CHTML exposes `clearCache`; SVG's equivalent is `clearFontCache`. Branch on the concrete
         // type so the teardown is correct for whichever renderer is active.
         if (this.outputJax instanceof CHTML) {

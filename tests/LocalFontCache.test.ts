@@ -56,15 +56,18 @@ function fakeAdapter() {
     return { adapter, files, folders };
 }
 
-type FetchBehavior = (url: string) => ArrayBuffer | "http-error";
+type FetchBehavior = (url: string) => ArrayBuffer | "http-error" | "not-found";
 
 function fakeFetch(behavior: FetchBehavior): typeof fetch {
     return (async (url: string | URL) => {
         const body = behavior(String(url));
-        if (body === "http-error") {
-            return { ok: false, arrayBuffer: async () => new ArrayBuffer(0) } as Response;
+        if (body === "not-found") {
+            return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) } as Response;
         }
-        return { ok: true, arrayBuffer: async () => body } as unknown as Response;
+        if (body === "http-error") {
+            return { ok: false, status: 500, arrayBuffer: async () => new ArrayBuffer(0) } as Response;
+        }
+        return { ok: true, status: 200, arrayBuffer: async () => body } as unknown as Response;
     }) as typeof fetch;
 }
 
@@ -131,6 +134,33 @@ describe("LocalFontCache", () => {
         const result = await cache.ensureFiles(["mjx-ncm-s.woff2"]);
         expect(result.ok).toBe(false);
         expect(state.files.size).toBe(0);
+    });
+
+    it("marks names the pinned source does not ship (404) as unavailable and stays usable", async () => {
+        // MathJax 4.1.3's NewCM stylesheet references a few variant woff2 files (dvb, dvi,
+        // dvbi, abb, abbi) that the font package never shipped; a note merely mentioning
+        // \mathbb pulls them in. They must not disable the whole local cache.
+        const state = fakeAdapter();
+        const cache = makeCache(state, (url) =>
+            url.endsWith("mjx-ncm-dvb.woff2") ? "not-found" : woff2());
+        const result = await cache.ensureFiles(["mjx-ncm-s.woff2", "mjx-ncm-dvb.woff2"]);
+        expect(result.ok).toBe(true);
+        const manifest = JSON.parse(
+            state.files.get(
+                ".obsidian/plugins/latest-mathjax/fonts/4.1.3/manifest.json",
+            ) as string,
+        ) as Record<string, number>;
+        expect(manifest["mjx-ncm-dvb.woff2"]).toBe(-1);
+        expect(manifest["mjx-ncm-s.woff2"]).toBe(8);
+
+        let fetches = 0;
+        const again = makeCache(state, () => {
+            fetches++;
+            return woff2();
+        });
+        const second = await again.ensureFiles(["mjx-ncm-s.woff2", "mjx-ncm-dvb.woff2"]);
+        expect(second.ok).toBe(true);
+        expect(fetches).toBe(0);
     });
 
     it("cleans up font-version directories other than the current one", async () => {

@@ -7,6 +7,7 @@ vi.mock("obsidian", () => ({ loadMathJax }));
 import {
     INVASIVE_SOURCE_ATTR,
     NativeMathBridge,
+    resetActiveBridgeForTests,
     scopeNativeCss,
 } from "../src/invasive/NativeMathBridge";
 
@@ -30,6 +31,7 @@ afterEach(() => {
     document.body.replaceChildren();
     document.head.replaceChildren();
     setNativeMathJax(null);
+    resetActiveBridgeForTests();
     vi.clearAllMocks();
 });
 
@@ -100,6 +102,45 @@ describe("NativeMathBridge", () => {
         loadMathJax.mockRejectedValue(new Error("offline"));
         const result = await new NativeMathBridge({ render: rendering, stylesheet: () => null }).install();
         expect(result.ok).toBe(false);
+    });
+
+    it("leaves no setter trap behind when activation fails after preinstall", async () => {
+        // Cold start shape: MathJax not yet loaded, so preinstall arms the trap.
+        setNativeMathJax(null);
+        const bridge = new NativeMathBridge({ render: rendering, stylesheet: () => null });
+        bridge.preinstall();
+        expect(Object.getOwnPropertyDescriptor(window, "MathJax")?.get).toBeDefined();
+
+        // The lazy loader leaves a partial object (Obsidian changed its internals) — the
+        // activation must fail closed AND the failure-path uninstall must drop the trap,
+        // restoring window.MathJax as a plain property holding the native object.
+        setNativeMathJax({ chtmlStylesheet: () => document.createElement("style") });
+        const result = await bridge.install();
+        expect(result.ok).toBe(false);
+        bridge.uninstall();
+
+        const descriptor = Object.getOwnPropertyDescriptor(window, "MathJax");
+        expect(descriptor?.get).toBeUndefined();
+        expect(descriptor?.set).toBeUndefined();
+        expect((nativeMathJax() as Patchable).chtmlStylesheet).toBeDefined();
+        expect((window as unknown as Record<string, unknown>)["__latestMathJaxNative"]).toBeUndefined();
+    });
+
+    it("preserves a pre-existing partial MathJax object across trap arm and drop", async () => {
+        // A partial object occupies window.MathJax before preinstall (Obsidian update
+        // removed the entry points). Arming the trap must not lose it.
+        const partial = { chtmlStylesheet: () => document.createElement("style") };
+        setNativeMathJax(partial);
+        const bridge = new NativeMathBridge({ render: rendering, stylesheet: () => null });
+        bridge.preinstall();
+        // While trapped, reads still see the partial object through the slot.
+        expect(nativeMathJax()).toBe(partial);
+
+        bridge.uninstall();
+        const descriptor = Object.getOwnPropertyDescriptor(window, "MathJax");
+        expect(descriptor?.get).toBeUndefined();
+        expect(nativeMathJax()).toBe(partial);
+        expect((window as unknown as Record<string, unknown>)["__latestMathJaxNative"]).toBeUndefined();
     });
 
     it("falls through to the native renderer when the callback returns null", async () => {

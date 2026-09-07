@@ -170,151 +170,6 @@ export default class LatestMathJaxPlugin extends Plugin {
             callback: () => void this.downloadFontsCommand(),
         });
 
-        // TEMPORARY (1.0 acceptance): dumps invasive-mode DOM truth to a vault file so the
-        // desktop pass does not depend on fragile DevTools console probes. Remove before release.
-        this.addCommand({
-            id: "invasive-diagnostics",
-            name: "Write invasive diagnostics",
-            callback: () => {
-                const elements = Array.from(document.querySelectorAll<HTMLElement>("*"));
-                const containers = elements.filter(
-                    (el) => el.localName === "mjx-container",
-                );
-                const renamed = elements.filter((el) => el.localName.startsWith("latest-mjx-"));
-                const report: Record<string, unknown> = {
-                    at: new Date().toISOString(),
-                    setting: this.settings.invasiveMode,
-                    invasiveActive: this.invasiveActive,
-                    bridgeInstalled: this.bridge?.isInstalled ?? false,
-                    nativeMathJaxVersion: (window as unknown as { MathJax?: { version?: string } })
-                        .MathJax?.version ?? null,
-                    engineRevision: this.engine.revision,
-                    engineInitialised: this.engine.isInitialised,
-                    bodyClass: document.body.classList.contains("latest-mathjax-invasive"),
-                    nativeFallbackStyles: document.getElementById(
-                        "latest-mathjax-native-fallback-styles",
-                    ) !== null,
-                    engineStyles: document.getElementById(
-                        "latest-mathjax-chtml-styles",
-                    ) !== null,
-                    mjxContainers: containers.length,
-                    stampedContainers: containers.filter((c) =>
-                        c.hasAttribute("data-latest-mathjax-engine"),
-                    ).length,
-                    sourcedContainers: containers.filter((c) =>
-                        c.hasAttribute(INVASIVE_SOURCE_ATTR),
-                    ).length,
-                    latestMjxElements: renamed.length,
-                    probes: [] as string[],
-                };
-                // Rendering probes with captured errors — the console is unreliable here.
-                const probe = (label: string, fn: () => HTMLElement): string => {
-                    try {
-                        const node = fn();
-                        return `${label}: OK ${node.outerHTML.slice(0, 120)}`;
-                    } catch (err) {
-                        return `${label}: THREW ${err instanceof Error ? err.message : String(err)}`;
-                    }
-                };
-                report.probes = [
-                    probe("facade", () => this.renderInto("x^2", false, document, false)),
-                    probe(
-                        "native",
-                        () => (this.bridge
-                            ? this.bridge.renderNative("x^2", false)
-                                ?? "NULL"
-                            : "no-bridge") as unknown as HTMLElement,
-                    ),
-                    probe("renderMath", () => renderMath("x^2", false)),
-                ];
-                report.nativeTex2chtmlIsOurs = Boolean(
-                    this.bridge?.isInstalled &&
-                    (window as unknown as {
-                        MathJax?: { tex2chtml?: unknown };
-                    }).MathJax?.tex2chtml !== undefined,
-                );
-                report.remoutedLeaves = this.lastRemountCount;
-                report.mathWrappers = document.querySelectorAll(".math").length;
-                report.preambleFile = this.settings.preambleFile;
-                report.filePreambleChars = this.filePreamble.length;
-                report.preambleProblems = this.preambleDiagnostics.map((p) =>
-                    `${p.source}: ${p.message.slice(0, 80)}`);
-                report.leaves = [];
-                const leafReports = report.leaves as unknown[];
-                const popoutReports: unknown[] = [];
-                this.app.workspace.iterateAllLeaves((leaf) => {
-                    const view = leaf.view;
-                    const container = view.containerEl;
-                    if (!container) return;
-                    const ownerDoc = container.ownerDocument;
-                    if (ownerDoc !== document) {
-                        const copied = ownerDoc.getElementById("latest-mathjax-chtml-styles");
-                        popoutReports.push({
-                            title: ownerDoc.title,
-                            styleCopied: copied !== null,
-                            styleHead: (copied?.textContent ?? "").slice(0, 160),
-                            hasFontFace: (copied?.textContent ?? "").includes("@font-face"),
-                            containers: ownerDoc.querySelectorAll("mjx-container").length,
-                            fonts: Array.from(ownerDoc.fonts as unknown as Iterable<
-                                { family: string; status: string }>)
-                                .map((f) => `${f.family}:${f.status}`).slice(0, 8),
-                        });
-                    }
-                    const wrappers = container.querySelectorAll(".math");
-                    if (wrappers.length === 0) return;
-                    const markdown = view instanceof MarkdownView ? view : null;
-                    leafReports.push({
-                        type: view.getViewType(),
-                        path: markdown?.file?.path ?? "?",
-                        mode: markdown?.getMode(),
-                        wrappers: wrappers.length,
-                        native: container.querySelectorAll(
-                            ".math mjx-container:not([data-latest-mathjax-engine])",
-                        ).length,
-                        ours: container.querySelectorAll(
-                            ".math mjx-container[data-latest-mathjax-engine]",
-                        ).length,
-                    });
-                });
-                report.popouts = popoutReports;
-                report.fontsStatus = document.fonts.status;
-                report.fontFaces = Array.from(document.fonts as unknown as Iterable<
-                    { family: string; status: string }>)
-                    .filter((f) => f.family.includes("MJX"))
-                    .map((f) => `${f.family}:${f.status}`)
-                    .slice(0, 10);
-                report.allFontFamilies = [...new Set(Array.from(
-                    document.fonts as unknown as Iterable<{ family: string }>,
-                    (f) => f.family,
-                ))].slice(0, 20);
-                const engineSheet = document.getElementById(
-                    "latest-mathjax-chtml-styles",
-                ) as HTMLStyleElement | null;
-                const faceRules = engineSheet?.sheet
-                    ? Array.from(engineSheet.sheet.cssRules)
-                        .filter((r) => r instanceof CSSFontFaceRule)
-                        .map((r) => (r as CSSFontFaceRule).cssText.slice(0, 90))
-                    : [];
-                report.engineFontFaces = faceRules.slice(0, 6);
-                report.engineRuleCount = engineSheet?.sheet?.cssRules.length ?? -1;
-                report.engineTextHasFace = (engineSheet?.textContent ?? "").includes("@font-face");
-                report.mirrorSnippet = (document.getElementById(
-                    "latest-mathjax-native-fallback-styles",
-                )?.textContent ?? "").slice(0, 200);
-                const sampleGlyph = document.querySelector<HTMLElement>("mjx-c.TEX-I");
-                report.glyphFontFamily = sampleGlyph
-                    ? getComputedStyle(sampleGlyph).fontFamily
-                    : "no-glyph-found";
-                report.samples = containers.slice(0, 3).map((c) =>
-                    `parent=${c.parentElement?.className ?? "?"} ` +
-                    `attrs=${Array.from(c.attributes).map((a) => a.name).join("|")} ` +
-                    `html=${c.outerHTML.slice(0, 200)}`);
-                void this.app.vault.adapter
-                    .write("invasive-diagnostics.json", JSON.stringify(report, null, 2))
-                    .then(() => new Notice("Latest MathJax: diagnostics written."));
-            },
-        });
-
         this.addSettingTab(new LatestMathJaxSettingTab(this.app, this));
 
         // Reading View: take over $$…$$ display math in rendered notes. The processor is a no-op
@@ -352,11 +207,23 @@ export default class LatestMathJaxPlugin extends Plugin {
             }),
         );
 
+        // Popout windows appear and move without any markdown post-processor running in their
+        // document (moving a leaf re-mounts the view with its rendered output intact), so the
+        // invasive style mirror needs its own trigger. The callback no-ops unless invasive mode
+        // is active, which keeps this one permanent registration harmless in coexistence mode.
+        this.registerEvent(
+            this.app.workspace.on("layout-change", () => this.scheduleInvasiveStyleSync()),
+        );
+
         logger.debug(`plugin loaded, bundled MathJax ${this.engine.version}`);
     }
 
     onunload(): void {
         this.disposed = true;
+        if (this.invasiveStyleSyncTimer !== null) {
+            window.clearTimeout(this.invasiveStyleSyncTimer);
+            this.invasiveStyleSyncTimer = null;
+        }
         // Restore the native renderer first so restoreNativeRendering() calls the unpatched
         // original, then swap every formula we rendered back to built-in output (async, guarded).
         const bridge = this.bridge;
@@ -555,6 +422,11 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.engine.initialise();
         const result = await this.bridge.install();
         if (!result.ok) {
+            // Tear the bridge down completely: a failed activation must not leave the
+            // setter trap armed (window.MathJax would keep being redirected into the
+            // trap slot even though nothing owns the patch any more).
+            this.bridge.uninstall();
+            this.bridge = null;
             new Notice(
                 "Latest MathJax: invasive mode is unavailable on this Obsidian build " +
                     `(${result.reason}). Keeping the default coexistence mode.`,
@@ -576,6 +448,7 @@ export default class LatestMathJaxPlugin extends Plugin {
         return new NativeMathBridge({
             render: (tex, display) => this.invasiveRender(tex, display),
             stylesheet: () => this.engine.stylesheet,
+            syncStyles: (targetDoc) => this.engine.ensureStyles(targetDoc),
         });
     }
 
@@ -619,6 +492,9 @@ export default class LatestMathJaxPlugin extends Plugin {
             // Lets unload hand the TeX back to the native renderer (the wrapper is the only
             // place the source still exists — Obsidian never stores it in invasive mode).
             node.setAttribute(INVASIVE_SOURCE_ATTR, tex);
+            // New glyph rules may have been inserted into the live sheet; keep every open
+            // document's mirror current so popout output never outlives its styling.
+            this.scheduleInvasiveStyleSync();
             return node;
         } catch (err) {
             logger.warn(`invasive mode: render failed for "${tex.slice(0, 60)}":`, err);
@@ -635,12 +511,43 @@ export default class LatestMathJaxPlugin extends Plugin {
 
     /**
      * Copies the bundled engine's stylesheet into a popout document; called by the invasive
-     * style-sync post-processor after each render pass there. Honors the popout setting.
+     * style-sync post-processor after each render pass there. A guest instance (its window
+     * shares this JS context but not the render patch) forwards to the owning instance, since
+     * only that engine's complete sheet matches the mounted output. Honors the popout setting.
      */
     syncInvasiveStyles(targetDoc: Document): void {
         if (!this.invasiveActive) return;
         if (!this.compatibility.canRender(targetDoc, this.settings.enablePopout)) return;
+        const ownerSync = this.bridge?.ownerStyleSync;
+        if (ownerSync) {
+            ownerSync(targetDoc);
+            return;
+        }
         this.engine.ensureStyles(targetDoc);
+    }
+
+    private invasiveStyleSyncTimer: number | null = null;
+
+    /**
+     * Debounced re-mirror of the engine stylesheet into every open document.
+     *
+     * Two triggers need the same debounced treatment: a render that grew the adaptive glyph
+     * sheet (new glyph rules are inserted through CSSOM and are invisible to text-based
+     * copies until the flush serializes them), and layout changes that move rendered content
+     * into a popout document without running any post-processor there. The 200 ms window
+     * matches the engine's style-flush fallback so the sync always serializes the post-flush
+     * sheet.
+     */
+    private scheduleInvasiveStyleSync(): void {
+        if (this.disposed || !this.invasiveActive) return;
+        if (this.invasiveStyleSyncTimer !== null) return;
+        this.invasiveStyleSyncTimer = window.setTimeout(() => {
+            this.invasiveStyleSyncTimer = null;
+            if (this.disposed || !this.invasiveActive) return;
+            for (const targetDoc of this.renderedDocuments()) {
+                if (targetDoc !== document) this.syncInvasiveStyles(targetDoc);
+            }
+        }, 200);
     }
 
     /**

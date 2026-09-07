@@ -21,24 +21,32 @@ Install like any community plugin — three files, no build steps, no other plug
 
 Obsidian ships its own MathJax build, and it lags behind upstream. New TeX packages, better font
 handling and upstream bug fixes only arrive when Obsidian updates. This plugin bundles a current
-**MathJax 4** engine and renders math through it, side by side with the built-in one — **without
-ever touching `window.MathJax` or Obsidian's `renderMath()`**.
+**MathJax 4** engine and renders math through it. By default it works side by side with the
+built-in one — **without ever touching `window.MathJax` or Obsidian's `renderMath()`**. An
+explicit **invasive mode** (off by default, enabled only after a confirmation dialog) goes
+further and takes over Obsidian's native rendering entry points, so *every* surface — including
+hover previews and embeds — upgrades to the bundled engine.
 
 ## Highlights
 
 - **Preamble files in your vault** — keep macros in a versioned `.tex` file; edits hot-reload and
   apply across every note.
 - **Reading View & Live Preview** — display and inline math taken over through public APIs only.
+- **Invasive mode (experimental, off by default)** — replaces the two internal entry points of
+  Obsidian's own MathJax so hover previews, embeds and every other surface render with MathJax
+  4.1.3 as well; enabled only after a warning dialog spelling out benefits and risks, with
+  automatic fail-closed fallback to the default mode. *(new in 1.0.0)*
 - **Deterministic PDF export** — an isolated SVG print engine embeds glyph paths, so exports are
   pixel-stable and offline-safe from either editor mode.
 - **CHTML or SVG output** — New Computer Modern webfonts from a CDN, or fully offline SVG.
-- **Popout windows** — styled automatically, reusing the same render adapters.
+- **Popout windows** — styled automatically in both modes; popout sheets mirror the engine's
+  live stylesheet, and local font URLs are rewritten to the CDN for popout documents.
 - **Macro diagnostics** — parse failures name the file or settings text they came from; the
   previous valid renderer keeps working.
 - **Accessibility option** — optional hidden MathML alongside every formula for screen readers,
-  off by default. *(new in 0.4.0)*
+  off by default.
 - **Offline fonts** — optional one-time download of the CommonHTML glyph set into the plugin
-  folder, so formulas keep full glyph shapes without network. *(new in 0.5.0)*
+  folder, so formulas keep full glyph shapes without network.
 - **Performance** — LRU formula cache and configurable render debounce for Live Preview.
 
 ## Getting started
@@ -73,13 +81,15 @@ exactly as before 0.2.0.
 
 ## Compatibility
 
-| Surface | Supported | Notes |
-| --- | --- | --- |
-| Reading View | ✅ | display + inline (inline opt-in), reversible takeover |
-| Live Preview | ✅ | public editor widgets + document positions (opt-in) |
-| Popout windows | ✅ | per-document style copy |
-| PDF export | ✅ | isolated SVG engine, deterministic output |
-| Hover Preview / Canvas | ❌ | re-evaluated against the public API in 0.4.0: no reliable public raw-TeX hook, canvas exposes none at all |
+| Surface | Default mode | Invasive mode | Notes |
+| --- | --- | --- | --- |
+| Reading View | ✅ | ✅ | display + inline (inline opt-in in default mode) |
+| Live Preview | ✅ | ✅ | public editor widgets (opt-in in default mode) |
+| Popout windows | ✅ | ✅ | per-document stylesheet mirroring |
+| PDF export | ✅ | ✅ | isolated SVG engine, deterministic output |
+| Hover preview | ❌ | ✅ | invasive mode covers Obsidian's own popover path automatically |
+| Embeds | ❌ | ✅ | same mechanism as hover preview |
+| Canvas | ❌ | ❌ | no render hook in either mode |
 
 Desktop only for now; a mobile acceptance pass is pending. See
 [`docs/compatibility.md`](docs/compatibility.md) for details and
@@ -87,6 +97,9 @@ Desktop only for now; a mobile acceptance pass is pending. See
 
 ## Settings
 
+- **Rendering mode** — invasive mode (experimental, default off). Enabling it always opens a
+  confirmation dialog listing benefits and risks; the per-surface toggles are managed by
+  invasive mode while it is active.
 - **Engine** — renderer (CHTML / SVG), scale, font file location, TeX packages, preamble file,
   global preamble, assistive MathML.
 - **Performance** — formula cache on/off + size, render debounce.
@@ -98,10 +111,23 @@ On Obsidian 1.13+ the settings tab is searchable; 1.8–1.12 get the classic tab
 
 ## Isolation guarantees
 
+In the **default (coexistence) mode**:
+
 1. `window.MathJax` is never deleted, replaced or patched.
 2. `renderMath()` / `finishRenderMath()` are never monkey-patched.
 3. The bundled engine lives in its own module scope.
 4. Disabling the plugin restores Obsidian's default math rendering with no leftovers.
+
+**Invasive mode** deliberately overrides guarantee 1 and 2 for exactly two members
+(`MathJax.tex2chtml`, `MathJax.chtmlStylesheet`), and only after you confirm the warning
+dialog. Its contract:
+
+- The patch is feature-gated at runtime — if an Obsidian update removes either entry point,
+  the plugin shows a notice and falls back to the default mode automatically.
+- Turning the mode off, disabling the plugin or uninstalling restores the original members
+  byte-for-byte and re-renders every formula the plugin produced back to Obsidian's own output.
+- The engine keeps living in its own module scope; no other global (`tex2svg`, `version`, …)
+  is touched, so other plugins depending on native MathJax keep working.
 
 When the bundled engine cannot render a formula, the configurable fallback shows Obsidian's own
 output, the raw LaTeX, or a compact error — the note is never left blank.

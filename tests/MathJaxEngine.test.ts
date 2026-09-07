@@ -82,8 +82,8 @@ describe("MathJaxEngine", () => {
         const dynamicFormula = String.raw`\mathbb{R}\xrightarrow{\text{limit}}\infty`;
         const initialDocument = document.implementation.createHTMLDocument("initial-chtml");
         instance.renderInto(dynamicFormula, { display: false }, initialDocument);
-        const initialStyles = initialDocument.getElementById(
-            "latest-mathjax-chtml-styles",
+        const initialStyles = initialDocument.querySelector(
+            "[id^=latest-mathjax-chtml-styles]",
         )?.textContent;
         const revision = instance.revision;
         const svg = defaultEngineConfig();
@@ -97,7 +97,7 @@ describe("MathJaxEngine", () => {
         const popout = document.implementation.createHTMLDocument("switch-back");
         const chtml = instance.renderInto(dynamicFormula, { display: false }, popout);
         expect(chtml.textContent).toContain("ℝ");
-        expect(popout.getElementById("latest-mathjax-chtml-styles")?.textContent)
+        expect(popout.querySelector("[id^=latest-mathjax-chtml-styles]")?.textContent)
             .toBe(initialStyles);
     });
 
@@ -182,7 +182,7 @@ describe("MathJaxEngine", () => {
             expect(instance.updateConfig(toggled)).toBe(true);
             instance.render("y+2", { display: false });
 
-            const sheets = document.querySelectorAll("#latest-mathjax-chtml-styles");
+            const sheets = document.querySelectorAll("[id^=latest-mathjax-chtml-styles]");
             expect(sheets).toHaveLength(1);
             const live = (sheets[0] as HTMLStyleElement).sheet;
             expect(live).not.toBeNull();
@@ -249,7 +249,7 @@ describe("MathJaxEngine", () => {
             config.renderer = renderer;
             config.enableAssistiveMml = true;
             engine(config).render("x+1", { display: false });
-            const sheet = document.getElementById("latest-mathjax-chtml-styles");
+            const sheet = document.querySelector("[id^=latest-mathjax-chtml-styles]");
             const rules = Array.from(sheet?.sheet?.cssRules ?? [], (rule) => rule as CSSStyleRule)
                 .filter((rule) => rule.selectorText?.includes("latest-mjx-assistive-mml"));
             expect(rules.length).toBeGreaterThanOrEqual(2);
@@ -299,7 +299,7 @@ describe("MathJaxEngine", () => {
         // SVG embeds glyph paths; neither the markup nor the flushed stylesheet may reference
         // the configured font URL.
         expect(rendered.outerHTML).not.toContain("cdn.example.com");
-        const sheet = document.getElementById("latest-mathjax-chtml-styles");
+        const sheet = document.querySelector("[id^=latest-mathjax-chtml-styles]");
         const text = sheet?.textContent ?? "";
         expect(text).not.toContain("cdn.example.com");
         expect(text).not.toContain('url("http');
@@ -317,7 +317,7 @@ describe("MathJaxEngine", () => {
         const popout = document.implementation.createHTMLDocument("popout");
         const rendered = instance.renderInto("x", { display: false }, popout);
         expect(rendered.ownerDocument).toBe(popout);
-        const copied = popout.getElementById("latest-mathjax-chtml-styles");
+        const copied = popout.querySelector("[id^=latest-mathjax-chtml-styles]");
         expect(copied).not.toBeNull();
         expect(copied?.textContent).toContain("mjx-container");
     });
@@ -326,15 +326,15 @@ describe("MathJaxEngine", () => {
         const instance = engine();
         const printDocument = document.implementation.createHTMLDocument("print");
         instance.renderInto("x", { display: false }, printDocument);
-        const copied = printDocument.getElementById("latest-mathjax-chtml-styles");
-        const hostStyle = document.getElementById(
-            "latest-mathjax-chtml-styles",
+        const copied = printDocument.querySelector("[id^=latest-mathjax-chtml-styles]");
+        const hostStyle = document.querySelector(
+            "[id^=latest-mathjax-chtml-styles]",
         ) as HTMLStyleElement;
         hostStyle.sheet?.insertRule(".latest-mathjax-print-probe { color: red; }");
 
         instance.ensureStyles(printDocument);
 
-        expect(printDocument.getElementById("latest-mathjax-chtml-styles")).toBe(copied);
+        expect(printDocument.querySelector("[id^=latest-mathjax-chtml-styles]")).toBe(copied);
         expect(copied?.textContent).toContain("latest-mathjax-print-probe");
     });
 
@@ -375,7 +375,7 @@ describe("MathJaxEngine", () => {
             const popout = document.implementation.createHTMLDocument(`popout-${renderer}`);
             const rendered = instance.renderInto(String.raw`x \in \RR`, { display: false }, popout);
             expect(rendered.ownerDocument).toBe(popout);
-            expect(popout.getElementById("latest-mathjax-chtml-styles")).not.toBeNull();
+            expect(popout.querySelector("[id^=latest-mathjax-chtml-styles]")).not.toBeNull();
             if (renderer === "svg") {
                 expect(rendered.querySelector("svg path")).not.toBeNull();
             } else {

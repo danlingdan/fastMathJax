@@ -3,6 +3,35 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.0.0 - 2026-09-08
+
+- Added an experimental **invasive mode** (off by default, INV-01…07): after a mandatory
+  confirmation dialog listing benefits and risks, the plugin patches exactly two internal
+  entry points of Obsidian's native MathJax (`tex2chtml`, `chtmlStylesheet`) so *every*
+  rendering surface — including hover previews and embeds, which the default mode cannot
+  reach — renders with the bundled MathJax 4.1.3 engine. The patch is feature-gated at
+  runtime (an Obsidian update that removes either entry point triggers a notice and an
+  automatic fail-closed revert to the default mode), the original members are restored
+  byte-for-byte on disable/uninstall, and formulas the plugin rendered are handed back to
+  Obsidian's own renderer with their stamped TeX. Nothing else on `window.MathJax` is
+  touched, so plugins that depend on native MathJax keep working.
+- Invasive-mode style delivery hardened for popouts: the engine's persistent stylesheet keeps
+  its text in sync with the live CSSOM (adaptive glyph rules are inserted through the CSSOM
+  after mount, and text-based cross-document copies previously missed them), popout layout
+  changes and invasive renders re-mirror stylesheets into every open document, and local
+  font URLs are rewritten to the CDN in popout documents — popouts live at a null origin and
+  cannot fetch `app://` font resources, which previously left letters invisible there.
+- Degrade hardening: a failed invasive activation now tears the bridge down completely
+  (no setter trap left redirecting `window.MathJax`) and preserves any partial native
+  MathJax object across trap arm/drop cycles.
+- New **Rendering mode** settings group (both the 1.13 declarative tab and the 1.8–1.12
+  classic tab), sharing one confirmation flow; per-surface toggles show "Managed by
+  invasive mode" while it is active.
+- Settings semantics frozen and documented in `docs/settings.md` (API-01); compatibility
+  matrix rewritten for dual-mode operation (`docs/compatibility.md`, DOC-02); dual-mode
+  benchmark evidence recorded in `docs/benchmarks.md` (open cost −16–18 % in invasive
+  mode, typing and view-switch at parity).
+
 ## 0.5.0 - 2026-09-07
 
 - Added an opt-in **local font cache** for CommonHTML output (FONT-01, designed in

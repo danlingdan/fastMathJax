@@ -54,6 +54,22 @@ export interface NativeMathBridgeOptions {
     render: (tex: string, display: boolean) => HTMLElement | null;
     /** The bundled engine's current stylesheet element; recreated on every flush. */
     stylesheet: () => HTMLStyleElement | null;
+    /**
+     * Copies the engine stylesheet into a target (popout) document. Only the owning instance
+     * provides this; guest instances (see `install`) forward their style syncs to it.
+     */
+    syncStyles?: (targetDoc: Document) => void;
+}
+
+/** The bridge that currently owns the patch in this JS context, if any. */
+let activeBridge: NativeMathBridge | null = null;
+
+/**
+ * Clears the context-wide bridge registry. Test-only: each test creates fresh bridges and
+ * the registry would otherwise make later installs adopt earlier tests' bridges.
+ */
+export function resetActiveBridgeForTests(): void {
+    activeBridge = null;
 }
 
 function windowRef(): Window {
@@ -75,9 +91,21 @@ function isFullMathJax(value: unknown): value is NativeMathJax {
 export class NativeMathBridge {
     private readonly options: NativeMathBridgeOptions;
     private installed = false;
+    /** True when another bridge in this context already owns the patch and this one adopts it. */
+    private adopted = false;
     private trapActive = false;
     private originalTex2chtml: NonNullable<NativeMathJax["tex2chtml"]> | undefined;
     private originalStylesheet: NonNullable<NativeMathJax["chtmlStylesheet"]> | undefined;
+
+    /**
+     * Obsidian popout windows share the plugin's JS context: every window runs its own plugin
+     * instance, and without this check each would patch `window.MathJax` in turn, each saving
+     * the previous instance's patch as "the original". Only one bridge may own the patch per
+     * context; later instances adopt it.
+     */
+    private static activeBridge(): NativeMathBridge | null {
+        return activeBridge;
+    }
 
     /** Stable identities for the patched members so `uninstall` only removes our own patches. */
     private readonly patchedTex2chtml = (
@@ -101,7 +129,7 @@ export class NativeMathBridge {
      * widget render already goes through the bundled engine. Never throws.
      */
     preinstall(): void {
-        if (this.installed) return;
+        if (this.installed || this.trapActive) return;
         try {
             const current = nativeMathJax();
             if (isFullMathJax(current)) {
@@ -110,6 +138,10 @@ export class NativeMathBridge {
                 return;
             }
             const win = windowRef() as unknown as Record<string, unknown>;
+            // Preserve whatever non-full value currently occupies the slot (e.g. Obsidian's
+            // partial config object) — dropping the property without stashing it would lose
+            // the object for every later reader if no assignment ever fires the trap.
+            win[TRAP_SLOT] = current;
             Object.defineProperty(window, "MathJax", {
                 configurable: true,
                 get: () => win[TRAP_SLOT],
@@ -139,6 +171,17 @@ export class NativeMathBridge {
      */
     async install(): Promise<InstallResult> {
         if (this.installed) return { ok: true };
+        const owner = NativeMathBridge.activeBridge();
+        if (owner && owner !== this && owner.isInstalled) {
+            // Another plugin instance (a popout) already owns the patch in this shared JS
+            // context. Adopt it: the guest must not save the owner's patch as "the original"
+            // nor fight it over the render entry points.
+            this.adopted = true;
+            this.installed = true;
+            document.body.classList.add(INVASIVE_BODY_CLASS);
+            logger.debug("invasive mode: adopting the bridge owned by the primary instance");
+            return { ok: true };
+        }
         try {
             await loadMathJax();
         } catch (err) {
@@ -159,6 +202,7 @@ export class NativeMathBridge {
         // If any native renders slipped in before the patch (trap miss on an unexpected
         // bundle shape), make sure their output is styled: mirror the v3 stylesheet now.
         this.syncNativeFallbackStyles();
+        activeBridge = this;
         logger.debug("invasive mode: native MathJax render entry points patched");
         return { ok: true };
     }
@@ -176,6 +220,7 @@ export class NativeMathBridge {
         mj.chtmlStylesheet = this.patchedStylesheet;
         document.body.classList.add(INVASIVE_BODY_CLASS);
         this.installed = true;
+        activeBridge = this;
         this.dropTrap();
         return true;
     }
@@ -200,6 +245,12 @@ export class NativeMathBridge {
     /** Restores the original members and every marker this bridge added. Idempotent. */
     uninstall(): void {
         this.dropTrap();
+        if (this.adopted) {
+            // A guest never owned the patch — leaving it to the owner is correct.
+            this.adopted = false;
+            this.installed = false;
+            return;
+        }
         const mj = nativeMathJax();
         if (mj) {
             if (mj.tex2chtml === this.patchedTex2chtml) {
@@ -209,12 +260,23 @@ export class NativeMathBridge {
                 mj.chtmlStylesheet = this.originalStylesheet;
             }
         }
+        if (activeBridge === this) activeBridge = null;
         document.body.classList.remove(INVASIVE_BODY_CLASS);
         document.getElementById(NATIVE_FALLBACK_STYLE_ID)?.remove();
         this.installed = false;
         this.originalTex2chtml = undefined;
         this.originalStylesheet = undefined;
         logger.debug("invasive mode: native MathJax entry points restored");
+    }
+
+    /**
+     * The owning instance's cross-document style sync, for guest instances: popout rendering
+     * goes through the shared patch (owned by the primary window's engine), so style copies
+     * into any document must be made by that same engine.
+     */
+    get ownerStyleSync(): ((targetDoc: Document) => void) | null {
+        if (!this.adopted) return null;
+        return NativeMathBridge.activeBridge()?.options.syncStyles ?? null;
     }
 
     /**
