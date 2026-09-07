@@ -149,12 +149,12 @@ All desktop-accepted on Obsidian 1.13.7 (Windows); dual-mode benchmark evidence 
 | INV-05 | P1 | Cross-document style and font delivery | M | ✅ Popout documents mirror the engine's live CSSOM (text kept in sync after CSSOM rule insertions), layout changes and renders re-sync mirrors, and local font URLs are rewritten to the CDN for null-origin popout documents |
 | INV-06 | P1 | Engine isolation switch | S | ✅ `isolationEnabled` config gates tag renaming and selector scoping; default mode unchanged |
 | INV-07 | P0 | Lifecycle hardening and failure injection | M | ✅ Cold start with mode on (setter trap), delete-`tex2chtml` degrade with automatic revert and full trap teardown, partial native object preserved, disable/uninstall leaves no patch, trap slot, style or listener behind |
-| API-01 | P0 | Freeze and document persisted settings semantics | M | Defaults, ranges, migrations and rollback behavior are documented in [`docs/settings.md`](settings.md) and covered by tests |
+| API-01 | P0 | Freeze and document persisted settings semantics | M | ✅ [`docs/settings.md`](settings.md) documents every key (defaults, ranges, migration, rollback, invasive lifecycle); normalization pinned by migration tests |
 | LIFE-01 | P0 | Verify complete enable/disable/uninstall cleanup | M | ✅ Disable with invasive on restores native rendering (verified live); no plugin stylesheet, listener, timer, observer or global mutation remains after unload (plugin-disabled DOM audit: zero residual style elements) |
-| UPG-01 | P0 | Exercise clean install and every supported upgrade path | L | Settings and rendering survive upgrades from each supported minor release; corrupt `data.json` normalizes safely |
-| QA-01 | P0 | Complete two consecutive release-candidate acceptance passes | L | No open P0 defect and no unexplained runtime console error remains |
-| DOC-02 | P0 | Publish stable user, troubleshooting and maintainer documentation | M | README (default isolation + explicit invasive opt-in), compatibility matrix, settings reference, offline fonts, benchmarks and this roadmap updated for 1.0 |
-| REL-03 | P0 | Verify final automated release and rollback procedure | M | CI publishes the three assets with provenance from a plain SemVer tag; previous-version rollback drill executed |
+| UPG-01 | P0 | Exercise clean install and every supported upgrade path | L | ✅ 0.4/0.5 → 1.0: missing `invasiveMode` normalizes to `false` with all other settings preserved (desktop-verified with a 0.5.0-shaped `data.json`); corrupt `data.json` normalizes to defaults and keeps rendering (desktop-verified) |
+| QA-01 | P0 | Complete two consecutive release-candidate acceptance passes | L | ✅ Two full passes on the final 1.0.0 build, Obsidian 1.13.7: cold start with the mode on, Reading/LP/popout/hover rendering, on→off→on through the settings funnel, uninstall cleanliness — all green, no unexplained console errors |
+| DOC-02 | P0 | Publish stable user, troubleshooting and maintainer documentation | M | ✅ README (default isolation + explicit invasive opt-in), compatibility matrix, `docs/settings.md`, offline fonts, dual-mode benchmarks and this roadmap updated for 1.0 |
+| REL-03 | P0 | Verify final automated release and rollback procedure | M | ✅ Tag `1.0.0` (plain SemVer) triggered CI; release workflow published the three assets with build provenance (Rekor-logged attestation `45825043`); rollback drill executed by deploying the 0.5.0 build into the test vault and re-running the acceptance suite |
 
 ## Release gates
 

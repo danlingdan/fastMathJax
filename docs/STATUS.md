@@ -43,9 +43,13 @@ section's single post-processor pass; invasive mode renders them correctly.
 
 Stable contract: settings semantics frozen in [`docs/settings.md`](settings.md) (API-01);
 LIFE-01 verified live (no residual styles/patch/trap after disable); UPG-01 migration
-normalization pinned by tests and exercised on the desktop; DOC-02 done (README dual-mode
-rewrite, compatibility matrix, settings reference, benchmarks); QA-01/REL-03 are the release
-steps this candidate enters.
+normalization pinned by tests and exercised on the desktop (0.5.0-shaped and corrupt
+`data.json`); DOC-02 done (README dual-mode rewrite, compatibility matrix, settings
+reference, benchmarks). QA-01 passed as two consecutive full RC cycles on the final 1.0.0
+build. REL-03: tag `1.0.0` published the three assets via CI with build provenance
+(Rekor-logged attestation [`45825043`](https://github.com/danlingdan/fastMathJax/attestations/45825043));
+the rollback drill (deploying the 0.5.0 build into the test vault and re-running acceptance)
+was executed during the desktop pass.
 
 ## 0.5.0 — offline font handling (released 2026-09-07)
 
