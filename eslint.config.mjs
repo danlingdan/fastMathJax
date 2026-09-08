@@ -19,6 +19,9 @@ export default [
         },
         rules: {
             "obsidianmd/no-unsupported-api": "error",
+            // Plugin-owned dynamic CSS goes through constructed stylesheets
+            // (src/engine/adoptedSheet.ts); creating <style>/<link> elements is rejected.
+            "obsidianmd/no-forbidden-elements": "error",
         },
     },
 ];

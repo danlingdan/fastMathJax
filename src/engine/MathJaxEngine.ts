@@ -10,6 +10,7 @@ import { AssistiveMmlHandler } from "@mathjax/src/js/a11y/assistive-mml.js";
 import type { MathDocument } from "@mathjax/src/js/core/MathDocument.js";
 
 import { MathCache, type CacheStats } from "./MathCache";
+import { adoptSheet, releaseSheet, setSheetCss, FONT_FACE_SHEET_MARKER } from "./adoptedSheet";
 import { isolateOutput, isolateStyles } from "./outputIsolation";
 import {
     type EngineConfig,
@@ -79,7 +80,9 @@ export function describeMathError(err: unknown): string {
 
 const STYLE_ELEMENT_ID = "latest-mathjax-chtml-styles";
 /**
- * Dedicated element holding ONLY the engine's `@font-face` rules.
+ * Element id for the per-document `@font-face` mirrors in popout documents (the host document
+ * carries the same CSS in a constructed stylesheet — see `adoptedSheet.ts`; foreign documents
+ * keep plain mirror elements so `ensureStyles` can re-find and refresh them by id).
  *
  * The adaptive glyph stylesheet is regenerated and replaced on every flush, and a flush that
  * lands at the wrong moment (rebuild, engine swap, another window's engine build in a popout)
@@ -148,7 +151,8 @@ export class MathJaxEngine {
         | SVG<HTMLElement, Text, Document>
         | null = null;
     private styleNode: HTMLStyleElement | null = null;
-    private fontFaceNode: HTMLStyleElement | null = null;
+    /** Constructed stylesheet carrying the merged `@font-face` set (see adoptedSheet.ts). */
+    private fontFaceSheet: CSSStyleSheet | null = null;
     /** Accumulated `@font-face` rules by family; grows monotonically, never shrinks. */
     private readonly fontFaceRules = new Map<string, string>();
     private fontFaceCss = "";
@@ -557,12 +561,13 @@ export class MathJaxEngine {
     }
 
     /**
-     * Mirrors the engine's `@font-face` rules into the dedicated persistent element.
+     * Mirrors the engine's `@font-face` rules into a dedicated persistent constructed
+     * stylesheet (see `adoptedSheet.ts` for why plugin-owned CSS uses `adoptedStyleSheets`).
      *
      * The adaptive glyph sheet is regenerated per flush and its face set follows recent
      * usage — a flush after a small render can present a sheet with only a handful of the
      * faces that already-mounted output depends on. The capture therefore MERGES: a face
-     * once seen is kept for the engine's lifetime, so the persistent element always covers
+     * once seen is kept for the engine's lifetime, so the persistent sheet always covers
      * every glyph the engine has ever rendered.
      */
     private syncFontFaces(sheet: HTMLStyleElement): void {
@@ -583,23 +588,38 @@ export class MathJaxEngine {
             }
         }
         if (this.fontFaceRules.size === 0) return;
-        if (!changed && this.fontFaceNode && this.fontFaceCss) {
+        if (!changed && this.fontFaceSheet && this.fontFaceCss) {
             this.triggerFontLoads(document);
             return;
         }
         this.fontFaceCss = [...this.fontFaceRules.values()].join("\n");
-        if (!this.fontFaceNode) {
-            this.fontFaceNode = document.getElementById(
-                this.fontFaceElementId,
-            ) as HTMLStyleElement | null;
-            if (!this.fontFaceNode) {
-                this.fontFaceNode = document.createElement("style");
-                this.fontFaceNode.id = this.fontFaceElementId;
-                document.head.appendChild(this.fontFaceNode);
+        if (!this.fontFaceSheet) {
+            this.fontFaceSheet = adoptSheet(document, FONT_FACE_SHEET_MARKER);
+        }
+        if (this.fontFaceSheet) setSheetCss(this.fontFaceSheet, this.fontFaceCss);
+        this.triggerFontLoads(document);
+    }
+
+    /**
+     * The live stylesheet element backing this engine's output, or an empty element created
+     * through MathJax's own adaptor factory when the flush has not produced one yet (the
+     * invasive-mode bridge hands this to Obsidian, whose native pipeline expects an element
+     * it can attach). Plugin code never synthesizes `<style>` elements itself — every style
+     * element in play was created by MathJax (see adoptedSheet.ts for plugin-owned CSS).
+     * Null only while the engine is torn down; the next build recreates everything.
+     */
+    stylesheetOrEmpty(): HTMLStyleElement | null {
+        if (this.styleNode) return this.styleNode;
+        if (this.outputJax && this.doc) {
+            try {
+                const sheet = this.outputJax.styleSheet(this.doc) as unknown as HTMLStyleElement;
+                sheet.id = this.styleElementId;
+                return sheet;
+            } catch (err) {
+                logger.debug("engine: fallback stylesheet creation failed:", err);
             }
         }
-        this.fontFaceNode.textContent = this.fontFaceCss;
-        this.triggerFontLoads(document);
+        return null;
     }
 
     /**
@@ -702,8 +722,8 @@ export class MathJaxEngine {
         this.styleNode?.remove();
         this.styleNode = null;
         this.serializedRuleCount = -1;
-        this.fontFaceNode?.remove();
-        this.fontFaceNode = null;
+        releaseSheet(document, FONT_FACE_SHEET_MARKER);
+        this.fontFaceSheet = null;
         this.fontFaceRules.clear();
         this.fontFaceCss = "";
         // CHTML exposes `clearCache`; SVG's equivalent is `clearFontCache`. Branch on the concrete

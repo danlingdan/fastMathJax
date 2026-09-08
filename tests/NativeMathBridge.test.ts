@@ -10,6 +10,10 @@ import {
     resetActiveBridgeForTests,
     scopeNativeCss,
 } from "../src/invasive/NativeMathBridge";
+import { findAdoptedSheet, NATIVE_FALLBACK_SHEET_MARKER } from "../src/engine/adoptedSheet";
+import { installConstructedSheetStubs } from "./stubs/constructedSheets";
+
+installConstructedSheetStubs(document);
 
 type Patchable = { tex2chtml?: unknown; chtmlStylesheet?: unknown; [key: string]: unknown };
 
@@ -164,12 +168,13 @@ describe("NativeMathBridge", () => {
         expect(originalTex).toHaveBeenCalledWith("\\bad", { display: false });
         // The native stylesheet must be mirrored, or the fallback formula renders unstyled —
         // and it must be scoped so v3 CSS cannot hit the plugin's own MathJax 4 output (0.3.0).
-        const mirrored = document.getElementById("latest-mathjax-native-fallback-styles");
-        expect(mirrored?.textContent)
+        const mirrored = findAdoptedSheet(document, NATIVE_FALLBACK_SHEET_MARKER);
+        const mirroredCss = mirrored ? (mirrored as unknown as { cssText: string }).cssText : "";
+        expect(mirroredCss)
             .toContain("mjx-container:not([data-latest-mathjax-engine])");
-        expect(mirrored?.textContent).not.toMatch(/(^|[\s>])mjx-container[\s[.]/);
+        expect(mirroredCss).not.toMatch(/(^|[\s>])mjx-container[\s[.]/);
         bridge.uninstall();
-        expect(document.getElementById("latest-mathjax-native-fallback-styles")).toBeNull();
+        expect(findAdoptedSheet(document, NATIVE_FALLBACK_SHEET_MARKER)).toBeNull();
     });
 
     it("scopes native CSS to non-plugin containers without touching unrelated rules", () => {
@@ -220,7 +225,7 @@ describe("NativeMathBridge", () => {
         expect(node.tagName).toBe("SPAN");
     });
 
-    it("hands out the engine stylesheet and keeps an empty stand-in before the engine exists", async () => {
+    it("hands out the engine stylesheet and null when the engine is torn down", async () => {
         setNativeMathJax({ tex2chtml: () => document.createElement("span"), chtmlStylesheet: () => document.createElement("style") });
         const sheet = document.createElement("style");
         let current: HTMLStyleElement | null = sheet;
@@ -229,10 +234,13 @@ describe("NativeMathBridge", () => {
 
         expect(nativeMathJax().chtmlStylesheet?.()).toBe(sheet);
 
-        current = null; // engine disposed/rebuilding
-        const standIn = nativeMathJax().chtmlStylesheet?.() as HTMLStyleElement;
-        expect(standIn.tagName).toBe("STYLE");
-        expect(nativeMathJax().chtmlStylesheet?.()).toBe(standIn);
+        // Null only while the engine is torn down (never in normal operation — build precedes
+        // install); returning null instead of a synthetic element keeps plugin code free of
+        // forbidden style-element creation. The next build/install cycle restores a real sheet.
+        current = null;
+        expect(nativeMathJax().chtmlStylesheet?.()).toBeNull();
+        current = sheet;
+        expect(nativeMathJax().chtmlStylesheet?.()).toBe(sheet);
     });
 
     it("cannot render natively through the bridge before install", () => {

@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.0.1 - 2026-09-08
+
+- Fixed the `obsidianmd/no-forbidden-elements` static-check violations flagged during the
+  marketplace submission: plugin-owned dynamic CSS (the merged `@font-face` set and the
+  invasive mode's scoped native-v3 fallback mirror) is now injected through **constructed
+  stylesheets** (`document.adoptedStyleSheets`) instead of created `<style>` elements — the
+  platform's designed mechanism for dynamic CSS. A failed activation no longer synthesizes a
+  stand-in style element; the patched `chtmlStylesheet` returns the engine's MathJax-created
+  sheet (or null while the engine is torn down). Per-document mirrors in popout windows keep
+  using plain elements, discovered by id. Rendering, font delivery, popouts and uninstall
+  cleanup are unchanged and re-verified on desktop. The rule is now part of the project's own
+  lint gate (`eslint.config.mjs`).
+
 ## 1.0.0 - 2026-09-08
 
 - Added an experimental **invasive mode** (off by default, INV-01…07): after a mandatory

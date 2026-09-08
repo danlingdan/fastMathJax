@@ -447,7 +447,7 @@ export default class LatestMathJaxPlugin extends Plugin {
     private createBridge(): NativeMathBridge {
         return new NativeMathBridge({
             render: (tex, display) => this.invasiveRender(tex, display),
-            stylesheet: () => this.engine.stylesheet,
+            stylesheet: () => this.engine.stylesheetOrEmpty(),
             syncStyles: (targetDoc) => this.engine.ensureStyles(targetDoc),
         });
     }

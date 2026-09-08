@@ -1,5 +1,6 @@
 import { loadMathJax } from "obsidian";
 
+import { adoptSheet, releaseSheet, setSheetCss, NATIVE_FALLBACK_SHEET_MARKER } from "../engine/adoptedSheet";
 import { logger } from "../utils/logger";
 
 /**
@@ -31,15 +32,16 @@ import { logger } from "../utils/logger";
 /** Minimal structural view of the members this bridge touches on Obsidian's native MathJax. */
 interface NativeMathJax {
     tex2chtml?: (tex: string, options?: { display?: boolean }) => HTMLElement;
-    chtmlStylesheet?: (options?: unknown) => HTMLStyleElement;
+    // Our patched variant may return null while the engine is torn down (a state the native
+    // pipeline never observes in practice — see stylesheetPatched); native v3 always returns
+    // an element, and the restore path swaps the exact original reference back in.
+    chtmlStylesheet?: (options?: unknown) => HTMLStyleElement | null;
     [key: string]: unknown;
 }
 
 /** Marker attribute carrying the TeX a rendered container was produced from. */
 export const INVASIVE_SOURCE_ATTR = "data-latest-mathjax-source";
 const INVASIVE_BODY_CLASS = "latest-mathjax-invasive";
-/** Holds the *native* v3 stylesheet while fallback rendering is in use (see `renderNative`). */
-const NATIVE_FALLBACK_STYLE_ID = "latest-mathjax-native-fallback-styles";
 /** Window slot keeping the real native object while the setter trap is active. */
 const TRAP_SLOT = "__latestMathJaxNative";
 
@@ -112,8 +114,8 @@ export class NativeMathBridge {
         tex: string,
         options?: { display?: boolean },
     ): HTMLElement => this.renderPatched(tex, options?.display === true);
-    private readonly patchedStylesheet = (): HTMLStyleElement => this.stylesheetPatched();
-    private emptyStylesheet: HTMLStyleElement | null = null;
+    private readonly patchedStylesheet = (): HTMLStyleElement | null =>
+        this.stylesheetPatched();
 
     constructor(options: NativeMathBridgeOptions) {
         this.options = options;
@@ -262,7 +264,7 @@ export class NativeMathBridge {
         }
         if (activeBridge === this) activeBridge = null;
         document.body.classList.remove(INVASIVE_BODY_CLASS);
-        document.getElementById(NATIVE_FALLBACK_STYLE_ID)?.remove();
+        releaseSheet(document, NATIVE_FALLBACK_SHEET_MARKER);
         this.installed = false;
         this.originalTex2chtml = undefined;
         this.originalStylesheet = undefined;
@@ -313,13 +315,11 @@ export class NativeMathBridge {
         return document.createElement("span");
     }
 
-    private stylesheetPatched(): HTMLStyleElement {
-        const sheet = this.options.stylesheet();
-        if (sheet) return sheet;
-        // Engine not built yet: hand back a stable empty element so the caller's append/toggle
-        // bookkeeping stays harmless until the first real flush replaces our reference.
-        if (!this.emptyStylesheet) this.emptyStylesheet = document.createElement("style");
-        return this.emptyStylesheet;
+    private stylesheetPatched(): HTMLStyleElement | null {
+        // The engine guarantees a sheet once initialised (build flushes one into the host
+        // document before the bridge ever patches), so this only returns null while the
+        // engine is torn down — a state where the next install cycle heals everything.
+        return this.options.stylesheet();
     }
 
     /**
@@ -344,15 +344,9 @@ export class NativeMathBridge {
                 : serializeSheet(sheet);
             const scoped = scopeNativeCss(text);
             if (!scoped) return;
-            let element = document.getElementById(NATIVE_FALLBACK_STYLE_ID) as
-                | HTMLStyleElement
-                | null;
-            if (!element) {
-                element = document.createElement("style");
-                element.id = NATIVE_FALLBACK_STYLE_ID;
-                document.head.appendChild(element);
-            }
-            element.textContent = scoped;
+            const mirror = adoptSheet(document, NATIVE_FALLBACK_SHEET_MARKER);
+            if (!mirror) return;
+            setSheetCss(mirror, scoped);
         } catch (err) {
             logger.debug("invasive mode: native stylesheet sync failed:", err);
         }

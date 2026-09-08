@@ -1,6 +1,6 @@
 {
   "name": "obsidian-latest-mathjax",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Use the latest MathJax engine for mathematical rendering in Obsidian.",
   "main": "main.js",
   "type": "module",
