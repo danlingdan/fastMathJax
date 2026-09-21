@@ -1,10 +1,9 @@
 # Project status
 
-Latest published version: `1.0.1`. The current `main` branch is the unpublished `1.1.0` candidate
-with downloadable STIX Two and Fira Math support described below. The plugin remains desktop-only
-until a separate mobile acceptance pass.
+Latest published version: `1.1.0`, with downloadable STIX Two and Fira Math support described
+below. The plugin remains desktop-only until a separate mobile acceptance pass.
 
-## Unreleased — downloadable math-font packs
+## 1.1.0 — downloadable math-font packs
 
 The **Math font** setting now selects New Computer Modern, STIX Two or Fira Math. NewCM remains in
 `main.js`; the other families are build-time exports of the official MathJax 4.1.3 packages and are

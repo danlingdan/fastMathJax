@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-09-22
 
 - Added real MathJax font selection for **New Computer Modern**, **STIX Two**, and **Fira Math**.
   NewCM remains bundled; STIX Two and Fira are generated at build time as non-executable gzip data
