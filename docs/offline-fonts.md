@@ -6,11 +6,10 @@ this design.
 
 ## Problem
 
-CommonHTML output references New Computer Modern `woff2` glyph files from a CDN
-(`https://cdn.jsdelivr.net/npm/@mathjax/mathjax-newcm-font@<version>/chtml/woff2` by default).
-Font *metrics* are bundled, so layout is always correct, but glyph *shapes* need the network: in
-airplane mode, CHTML formulas degrade to a system fallback face. SVG output embeds glyph paths and
-has no such dependency.
+CommonHTML output references the selected family's `woff2` glyph files from a CDN. New Computer
+Modern's metrics are bundled; optional STIX Two and Fira Math metrics arrive in a verified data
+pack. Glyph *shapes* still need the webfonts: in airplane mode, CHTML formulas degrade to a system
+fallback face. SVG embeds glyph paths and has no WOFF2 dependency.
 
 ## Goal
 
@@ -33,8 +32,8 @@ New setting **Font source** (dropdown, Engine group):
 
 | Value | Behavior |
 | --- | --- |
-| `cdn` (default) | Current behavior: `@font-face` rules point at the configured `fontURL` (jsDelivr by default). The existing custom-URL setting keeps working exactly as before. |
-| `local` | `@font-face` rules point at a font cache inside the plugin folder, served through Obsidian's `app://` resource path. Missing files are downloaded once from the pinned CDN source. The custom `fontURL` text setting is ignored in this mode (documented in the setting description). |
+| `cdn` (default) | `@font-face` rules point at the selected family's configured `fontURL` (jsDelivr by default). The custom-URL setting changes hosting only; it does not choose a font family. |
+| `local` | `@font-face` rules point at a family/version-isolated cache inside the plugin folder, served through Obsidian's `app://` resource path. Missing files are downloaded once from that family's pinned CDN source. The custom `fontURL` is ignored in this mode. |
 
 Either renderer can be selected with either source, but the font source only affects CommonHTML;
 SVG never fetches fonts (pinned by `tests/MathJaxEngine.test.ts`, FONT-02).
@@ -42,7 +41,7 @@ SVG never fetches fonts (pinned by `tests/MathJaxEngine.test.ts`, FONT-02).
 ### Cache location and layout
 
 ```
-<vault>/.obsidian/plugins/latest-mathjax/fonts/<font-version>/
+<vault>/.obsidian/plugins/latest-mathjax/fonts/<family>/<font-version>/
     manifest.json                     # { "<file>.woff2": <byteLength>, ... }
     mjx-ncm-s.woff2
     ...                               # 105 files, ≈1.8 MB for font version 4.1.3
@@ -51,8 +50,7 @@ SVG never fetches fonts (pinned by `tests/MathJaxEngine.test.ts`, FONT-02).
 - The plugin folder is used because the community installer only replaces `main.js`,
   `manifest.json` and `styles.css` — the cache survives plugin updates and is removed with the
   plugin. A vault-visible folder was rejected: it pollutes the user's notes tree.
-- `<font-version>` is the bundled `MATHJAX_FONT_VERSION` (e.g. `4.1.3`). Versions are isolated so
-  an upgrade can never mix glyph data across font releases.
+- `<family>/<font-version>` prevents a family switch or upgrade from mixing unrelated glyph files.
 
 ### Download set and source
 
@@ -60,8 +58,8 @@ SVG never fetches fonts (pinned by `tests/MathJaxEngine.test.ts`, FONT-02).
   `url(...)` target's basename in the emitted `@font-face` rules. Deriving from the stylesheet
   (instead of a hardcoded list) keeps the cache definition in sync with the bundled font data for
   any font version.
-- Files are fetched **only** from the pinned source root
-  `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-newcm-font@<font-version>/chtml/woff2`. A
+- Files are fetched **only** from the selected family's pinned source root
+  `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-<family>-font@<font-version>/chtml/woff2`. A
   user-configured `fontURL` is never used as a download source — that is the trust boundary
   (sec-review SEC-01, deferred, must not be silently widened by this feature).
 - The "Download fonts" command re-derives the set and fills gaps, so a cache from an interrupted
@@ -83,9 +81,25 @@ engine-internal changes are needed.
 
 ### Upgrades and cleanup
 
-When the bundled font version changes, the new version downloads into its own directory. Old
-version directories under `fonts/` are removed after the new cache is complete (startup cleanup),
-so the plugin folder never accumulates font generations.
+When the MathJax font version changes, the new version downloads into its own directory. Old
+version directories under the same family are removed after the new cache is complete; caches for
+other selected families remain independent.
+
+## Optional font-data packs
+
+NewCM's CHTML metrics, dynamic ranges and SVG paths remain in `main.js`. STIX Two and Fira Math are
+build-time exports of the corresponding official MathJax 4.1.3 packages:
+
+| Pack | Compressed | Expanded |
+| --- | ---: | ---: |
+| STIX Two | 19,301,788 bytes | 61,562,937 bytes |
+| Fira Math | 12,105,665 bytes | 41,679,663 bytes |
+
+The matching GitHub release hosts these `.json.gz` assets. Selecting a family downloads its pack
+once into `font-packs/`. Before parsing, the plugin verifies the exact compressed byte count,
+SHA-256, expanded byte count, schema version, family id and MathJax font version. The pack contains
+only serialized tables; the plugin never imports or evaluates downloaded JavaScript. A missing or
+invalid pack leaves NewCM active and shows a retryable notice.
 
 ### Offline and failure fallback
 
@@ -115,6 +129,9 @@ keep the network footprint polite.
 | Piece | Location |
 | --- | --- |
 | Cache service (manifest, integrity, cleanup) | `src/fonts/LocalFontCache.ts` |
+| Optional data-pack download and verification | `src/fonts/FontPackManager.ts` |
+| Generic CHTML/SVG data hydration | `src/fonts/PackedFont.ts` |
+| Build-time pack generation | `scripts/generate-font-packs.mjs` |
 | Settings model (`fontSource`) | `src/settingsModel.ts` |
 | Effective `fontURL` resolution + wiring | `src/main.ts` (`engineConfig()`, `applyFontSource()`) |
 | Settings UI (both surfaces) | `src/settings.ts` |
@@ -123,9 +140,8 @@ keep the network footprint polite.
 
 ## Acceptance
 
-- Automated: cache unit tests (skip-if-present, partial resume, integrity rejection, version
-  cleanup, resource-path mapping), settings normalization, SVG no-font-URL pin.
-- Desktop (HuaJiaHao): switch Font source to local, run **Download fonts**, verify
-  `fonts/4.1.3/` exists with the manifest; cut the network, hard-reload Obsidian, and confirm
-  CHTML formulas keep full glyph shapes; switch the renderer to SVG in airplane mode and confirm
-  rendering (FONT-02).
+- Automated: cache unit tests (skip-if-present, partial resume, integrity rejection, family/version
+  cleanup, resource-path mapping), pack checksum/corruption tests, settings migration, and actual
+  CHTML/SVG rendering from both STIX Two and Fira packs.
+- Desktop (pending for the unreleased font-selection work): select each family in CHTML and SVG,
+  verify PDF/popout consistency, then use local WOFF2 mode and repeat after a network-off restart.

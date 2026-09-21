@@ -1,11 +1,12 @@
 /** Keep MathJax's internal layout elements out of Obsidian's MathJax CSS namespace. */
-export function isolateOutput(container: HTMLElement): void {
+export function isolateOutput(container: HTMLElement, styleScope?: string): void {
     for (const element of Array.from(container.querySelectorAll("*"))) {
         if (!element.localName.startsWith("mjx-")) continue;
         const replacement = element.ownerDocument.createElement(`latest-${element.localName}`);
         for (const attribute of Array.from(element.attributes)) {
             replacement.setAttribute(attribute.name, attribute.value);
         }
+        if (styleScope) replacement.setAttribute("data-latest-mathjax-style", styleScope);
         replacement.append(...Array.from(element.childNodes));
         element.replaceWith(replacement);
     }
@@ -19,7 +20,10 @@ export function isolateOutput(container: HTMLElement): void {
  * goal anyway. Chromium rejects selectorText writes on some rule types, and one throw would
  * otherwise leave every later rule unrewritten.
  */
-export function isolateStyles(rules: CSSRuleList): void {
+export function isolateStyles(rules: CSSRuleList, styleScope?: string): void {
+    const scope = styleScope
+        ? `[data-latest-mathjax-style="${CSS.escape(styleScope)}"]`
+        : "";
     for (const rule of Array.from(rules)) {
         try {
             if ("selectorText" in rule) {
@@ -30,11 +34,24 @@ export function isolateStyles(rules: CSSRuleList): void {
                         ? `${prefix}mjx-container[data-latest-mathjax-engine]`
                         : `${prefix}latest-mjx-${name}`,
                 ).replace(/(\[data-latest-mathjax-engine\])\1+/g, "$1");
+                if (scope) {
+                    styleRule.selectorText = styleRule.selectorText
+                        .replace(
+                            /mjx-container\[data-latest-mathjax-engine\]/g,
+                            `mjx-container[data-latest-mathjax-engine]${scope}`,
+                        )
+                        .replace(/latest-mjx-[\w-]+/g, (tag) => `${tag}${scope}`)
+                        .replace(new RegExp(`(${escapeRegExp(scope)}){2,}`, "g"), "$1");
+                }
             } else if ("cssRules" in rule) {
-                isolateStyles((rule as CSSGroupingRule).cssRules);
+                isolateStyles((rule as CSSGroupingRule).cssRules, styleScope);
             }
         } catch {
             // Leave this rule as MathJax wrote it.
         }
     }
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

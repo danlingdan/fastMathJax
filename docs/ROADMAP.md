@@ -26,6 +26,7 @@ acceptance criteria pass in both automated checks and a real Obsidian desktop va
 | `0.4.0` | Compatibility and accessibility | Supported desktop contexts and assistive output have explicit, repeatable acceptance coverage | Compatibility matrix is verified in CHTML and SVG; unsupported surfaces remain fail-closed |
 | `0.5.0` | Distribution efficiency | Bundle-size and offline-font options are evaluated and improved without weakening isolation | A measured packaging decision is implemented or documented with evidence |
 | `1.0.0` | Stable contract | Configuration, rendering lifecycle and upgrade behavior are stable and documented | No open P0 defects; upgrade, rollback and clean-install gates pass |
+| `1.1.0` | Selectable fonts | Optional font families do not enlarge the core plugin | Verified data packs work in every renderer and surface; desktop matrix passes |
 
 ## `0.1.x` — review and stabilization
 
@@ -118,6 +119,15 @@ criteria for a future release. The packaging decision rule below still applies t
 | SIZE-03 | P1 | Evaluate safe deduplication and minification options | M | Root/extensible and uncommon glyph regression suites pass byte-for-byte functional checks |
 | SEC-01 | P0 | Review externally configured font and preamble paths | M | URL schemes and vault paths have documented trust boundaries; unsafe or ambiguous input fails visibly |
 
+## `1.1.0` — selectable downloadable fonts
+
+| ID | Priority | Work item | Estimate | Acceptance criteria |
+| --- | --- | --- | --- | --- |
+| FONT-03 | P1 | Real font-family selection | L | ◐ Implemented on `main`: NewCM, STIX Two and Fira drive both CHTML and SVG/PDF from matching MathJax data; automated render matrix passes; desktop matrix pending |
+| SIZE-04 | P0 | Keep optional font data out of `main.js` | M | ✅ Optional font data stays in non-executable gzip packs; the complete font-selection plus Chinese-localization candidate adds 30,411 bytes to the core bundle, and optional assets are size/hash attested |
+| SEC-02 | P0 | Verify downloaded font packs before use | M | ✅ Exact compressed and expanded sizes, SHA-256, schema, family and font version are checked before parsing; corrupt cache is removed; remote JavaScript is never executed |
+| REL-04 | P0 | Publish and attest optional pack assets | S | ◐ Release workflow and local validation updated; requires a tagged release and remote asset verification |
+
 Also carried: MOB-01 device pass (see `docs/mobile-spike.md`; closes MOB-02's conditional), and
 PKG-01 (`bussproofs` evaluation, 0.2.0 backlog).
 
@@ -170,7 +180,7 @@ Every feature or minor release must pass all applicable gates below.
 | Desktop acceptance | Clean vault and upgrade vault pass Reading View, Live Preview, CHTML, SVG, macros, fallback and unload checks |
 | Performance | Relevant benchmark results are recorded and show no unexplained regression |
 | Documentation | README, changelog, status, compatibility and this roadmap match the candidate |
-| Distribution | GitHub Actions publishes the three expected assets and provenance attestation succeeds |
+| Distribution | GitHub Actions publishes the three core files plus every declared optional pack, and provenance attestation succeeds |
 
 ## Roadmap maintenance
 

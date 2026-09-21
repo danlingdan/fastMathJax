@@ -43,7 +43,11 @@ Version 0.1.4 introduced searchable declarative settings on Obsidian 1.13 and ne
 Obsidian 1.8–1.12 continues to use the equivalent imperative settings tab, so this
 modernization does not raise `minAppVersion`.
 
-CommonHTML uses New Computer Modern webfonts from jsDelivr by default; its metrics are bundled, but the configured font files must be reachable for the intended glyph shapes. SVG embeds glyph paths and needs no font download. Both output modes include the full dynamic glyph-chunk metadata in `main.js`.
+CommonHTML uses the selected family's webfonts from jsDelivr by default; its metrics come from the
+built-in NewCM data or the verified STIX Two/Fira data pack, but the configured WOFF2 files must be
+reachable for the intended glyph shapes. SVG embeds glyph paths and needs no WOFF2 download, though
+an optional family still needs its one-time data-pack download. Popout mirrors rewrite local WOFF2
+URLs to the selected family's pinned CDN root.
 
 PDF export always uses a separate isolated SVG engine regardless of the interactive renderer. This
 keeps macros and package configuration consistent while avoiding print-time webfont races. It does

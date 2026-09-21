@@ -1,9 +1,11 @@
 import { TEX_PACKAGES, defaultEnabledPackages } from "./engine/packages";
 import {
     DEFAULT_FONT_URL,
+    defaultFontUrl,
     type EngineConfig,
     type RendererKind,
 } from "./engine/MathJaxConfig";
+import type { FontFamily } from "./fonts/FontPackManager";
 import { buildPreambleSegments, mergePreambles } from "./preamble/preambleModel";
 
 export type FallbackMode = "raw" | "obsidian" | "error";
@@ -13,6 +15,7 @@ export type FontSource = "cdn" | "local";
 
 export interface LatestMathJaxSettings {
     renderer: RendererKind;
+    fontFamily: FontFamily;
     packages: string[];
     preamble: string;
     /**
@@ -53,6 +56,7 @@ export interface LatestMathJaxSettings {
 
 export const DEFAULT_SETTINGS: LatestMathJaxSettings = {
     renderer: "chtml",
+    fontFamily: "newcm",
     packages: defaultEnabledPackages(),
     preamble: "",
     preambleFile: "",
@@ -101,6 +105,16 @@ export function normalizeSettings(
 
     if (stored.renderer === "chtml" || stored.renderer === "svg") {
         settings.renderer = stored.renderer;
+    }
+    if (
+        stored.fontFamily === "newcm" ||
+        stored.fontFamily === "stix2" ||
+        stored.fontFamily === "fira"
+    ) {
+        settings.fontFamily = stored.fontFamily;
+        if (typeof stored.fontURL !== "string" || !stored.fontURL.trim()) {
+            settings.fontURL = defaultFontUrl(stored.fontFamily);
+        }
     }
     if (
         stored.fallbackMode === "obsidian" ||
@@ -158,6 +172,7 @@ export function toEngineConfig(
     const preamble = mergePreambles(filePreamble, settings.preamble);
     return {
         renderer: settings.renderer,
+        fontFamily: settings.fontFamily,
         packages: settings.packages,
         preamble,
         // Only carry segments when a file actually contributes one; otherwise the engine keeps

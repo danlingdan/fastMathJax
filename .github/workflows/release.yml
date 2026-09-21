@@ -54,6 +54,7 @@ jobs:
         run: |
           mkdir release
           cp main.js manifest.json styles.css release/
+          cp font-packs/*.json.gz release/
       - name: Attest release assets
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
@@ -67,6 +68,7 @@ jobs:
             release/main.js \
             release/manifest.json \
             release/styles.css \
+            release/mathjax-font-*.json.gz \
             --verify-tag \
             --title "Latest MathJax ${GITHUB_REF_NAME}" \
             --generate-notes

@@ -79,6 +79,7 @@ function makeCache(
     return new LocalFontCache({
         adapter: state.adapter,
         pluginDir: ".obsidian/plugins/latest-mathjax",
+        fontId: "newcm",
         fontVersion,
         sourceRoot: "https://cdn.example.com/woff2",
         fetchImpl: fakeFetch(behavior),
@@ -92,12 +93,12 @@ describe("LocalFontCache", () => {
         const result = await cache.ensureFiles(["mjx-ncm-s.woff2", "mjx-ncm-sb.woff2"]);
         expect(result).toMatchObject({
             ok: true,
-            resourceDir: "app://cache/.obsidian/plugins/latest-mathjax/fonts/4.1.3",
+            resourceDir: "app://cache/.obsidian/plugins/latest-mathjax/fonts/newcm/4.1.3",
             downloaded: 2,
         });
         const manifest = JSON.parse(
             state.files.get(
-                ".obsidian/plugins/latest-mathjax/fonts/4.1.3/manifest.json",
+                ".obsidian/plugins/latest-mathjax/fonts/newcm/4.1.3/manifest.json",
             ) as string,
         ) as Record<string, number>;
         expect(Object.keys(manifest).sort()).toEqual(["mjx-ncm-s.woff2", "mjx-ncm-sb.woff2"]);
@@ -116,7 +117,7 @@ describe("LocalFontCache", () => {
         const result = await counting.ensureFiles(["mjx-ncm-s.woff2", "mjx-ncm-sb.woff2"]);
         expect(result.downloaded).toBe(1);
         expect(fetches).toBe(1);
-        expect(result.resourceDir).toContain("fonts/4.1.3");
+        expect(result.resourceDir).toContain("fonts/newcm/4.1.3");
     });
 
     it("rejects non-woff2 responses and records nothing for them", async () => {
@@ -147,7 +148,7 @@ describe("LocalFontCache", () => {
         expect(result.ok).toBe(true);
         const manifest = JSON.parse(
             state.files.get(
-                ".obsidian/plugins/latest-mathjax/fonts/4.1.3/manifest.json",
+                ".obsidian/plugins/latest-mathjax/fonts/newcm/4.1.3/manifest.json",
             ) as string,
         ) as Record<string, number>;
         expect(manifest["mjx-ncm-dvb.woff2"]).toBe(-1);
@@ -165,15 +166,15 @@ describe("LocalFontCache", () => {
 
     it("cleans up font-version directories other than the current one", async () => {
         const state = fakeAdapter();
-        await state.adapter.mkdir(".obsidian/plugins/latest-mathjax/fonts");
-        await state.adapter.mkdir(".obsidian/plugins/latest-mathjax/fonts/4.1.2");
-        await state.adapter.mkdir(".obsidian/plugins/latest-mathjax/fonts/4.1.3");
+        await state.adapter.mkdir(".obsidian/plugins/latest-mathjax/fonts/newcm");
+        await state.adapter.mkdir(".obsidian/plugins/latest-mathjax/fonts/newcm/4.1.2");
+        await state.adapter.mkdir(".obsidian/plugins/latest-mathjax/fonts/newcm/4.1.3");
         const cache = makeCache(state);
         await cache.cleanOtherVersions();
         const listing = await state.adapter
-            .list(".obsidian/plugins/latest-mathjax/fonts");
+            .list(".obsidian/plugins/latest-mathjax/fonts/newcm");
         expect(listing.folders).toEqual([
-            ".obsidian/plugins/latest-mathjax/fonts/4.1.3",
+            ".obsidian/plugins/latest-mathjax/fonts/newcm/4.1.3",
         ]);
     });
 

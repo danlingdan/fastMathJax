@@ -19,6 +19,8 @@ export interface LocalFontCacheDeps {
     adapter: FontCacheAdapter;
     /** Vault-relative plugin directory, e.g. `.obsidian/plugins/latest-mathjax`. */
     pluginDir: string;
+    /** Font-family id; each family has independent file names and manifests. */
+    fontId: string;
     /** Bundled font version; cache directories are keyed by it. */
     fontVersion: string;
     /** Pinned download source root — never taken from user input. */
@@ -70,7 +72,7 @@ export class LocalFontCache {
     }
 
     versionDir(version = this.deps.fontVersion): string {
-        return `${this.deps.pluginDir}/fonts/${version}`;
+        return `${this.deps.pluginDir}/fonts/${this.deps.fontId}/${version}`;
     }
 
     /**
@@ -127,7 +129,7 @@ export class LocalFontCache {
     /** Removes font-version directories other than the current one. Best effort. */
     async cleanOtherVersions(): Promise<void> {
         try {
-            const root = `${this.deps.pluginDir}/fonts`;
+            const root = `${this.deps.pluginDir}/fonts/${this.deps.fontId}`;
             if (!(await this.deps.adapter.exists(root))) return;
             const listing = await this.deps.adapter.list(root);
             for (const folder of listing.folders) {

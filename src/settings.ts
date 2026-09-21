@@ -9,7 +9,8 @@ import {
 } from "obsidian";
 import type LatestMathJaxPlugin from "./main";
 import { TEX_PACKAGES } from "./engine/packages";
-import { DEFAULT_FONT_URL } from "./engine/MathJaxConfig";
+import { defaultFontUrl } from "./engine/MathJaxConfig";
+import { FONT_FAMILIES, type FontFamily } from "./fonts/FontPackManager";
 import {
     normalizeSettings,
     type FallbackMode,
@@ -19,6 +20,12 @@ import {
 import { logger } from "./utils/logger";
 import { invokeModernSettingTabMethod } from "./settingsCompatibility";
 import { confirmInvasiveEnable } from "./invasive/InvasiveConfirmModal";
+import {
+    getObsidianLanguage,
+    localizeSettingDefinitions,
+    localizeSettingsElement,
+    translateSettingText,
+} from "./settingsI18n";
 
 export { DEFAULT_SETTINGS, normalizeSettings, toEngineConfig } from "./settingsModel";
 export type { FallbackMode, LatestMathJaxSettings } from "./settingsModel";
@@ -37,7 +44,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
      */
     getSettingDefinitions(): SettingDefinitionItem[] {
         const packageKey = (id: string) => `package:${id}`;
-        return [
+        return localizeSettingDefinitions([
             {
                 type: "group",
                 heading: "Rendering mode",
@@ -82,12 +89,25 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                         control: { type: "slider", key: "scale", min: 0.5, max: 2, step: 0.05 },
                     },
                     {
+                        name: "Math font",
+                        desc: "New Computer Modern is built in. STIX Two and Fira Math are " +
+                            "downloaded as verified data packs only when selected.",
+                        control: {
+                            type: "dropdown",
+                            key: "fontFamily",
+                            options: Object.fromEntries(
+                                FONT_FAMILIES.map((font) => [font.id, font.name]),
+                            ),
+                        },
+                    },
+                    {
                         name: "Font file location",
-                        desc: "Where CommonHTML fetches MathJax 4 woff2 files. Ignored for SVG output.",
+                        desc: "Where CommonHTML fetches the selected font's MathJax 4 woff2 " +
+                            "files. This changes hosting, not the font family. Ignored for SVG.",
                         control: {
                             type: "text",
                             key: "fontURL",
-                            placeholder: DEFAULT_FONT_URL,
+                            placeholder: defaultFontUrl(this.plugin.settings.fontFamily),
                             disabled: () => this.plugin.settings.renderer === "svg",
                         },
                     },
@@ -106,9 +126,13 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     {
                         name: "Reset font file location",
                         desc: "Restore the bundled CommonHTML font CDN default.",
-                        visible: () => this.plugin.settings.fontURL !== DEFAULT_FONT_URL,
+                        visible: () => this.plugin.settings.fontURL !==
+                            defaultFontUrl(this.plugin.settings.fontFamily),
                         action: () => {
-                            void this.setControlValue("fontURL", DEFAULT_FONT_URL).then(() => {
+                            void this.setControlValue(
+                                "fontURL",
+                                defaultFontUrl(this.plugin.settings.fontFamily),
+                            ).then(() => {
                                 invokeModernSettingTabMethod(this, "update");
                             }).catch(() => undefined);
                         },
@@ -231,7 +255,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     },
                 ],
             },
-        ];
+        ], getObsidianLanguage());
     }
 
     getControlValue(key: string): unknown {
@@ -251,7 +275,14 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 else packages.delete(id);
                 this.plugin.settings = normalizeSettings({ ...previous, packages: [...packages] });
             } else {
-                this.plugin.settings = normalizeSettings({ ...previous, [key]: value });
+                const update = key === "fontFamily"
+                    ? {
+                        ...previous,
+                        fontFamily: value as FontFamily,
+                        fontURL: defaultFontUrl(value as FontFamily),
+                    }
+                    : { ...previous, [key]: value };
+                this.plugin.settings = normalizeSettings(update);
             }
             await this.plugin.saveSettings();
             // A preambleFile path change re-reads the file inside saveSettings before the engine
@@ -263,7 +294,10 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         } catch (error) {
             this.plugin.settings = previous;
             logger.error(`failed to save setting ${key}:`, error);
-            new Notice("Latest MathJax: failed to save setting; the previous value was restored.");
+            new Notice(translateSettingText(
+                "Latest MathJax: failed to save setting; the previous value was restored.",
+                getObsidianLanguage(),
+            ));
             throw error;
         }
     }
@@ -398,7 +432,9 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 status.removeClass("is-error");
                 const hasPreamble = this.plugin.settings.preamble.trim().length > 0;
                 const hasFile = this.plugin.settings.preambleFile.trim().length > 0;
-                status.setText(hasPreamble || hasFile ? "Preamble applied." : "");
+                status.setText(hasPreamble || hasFile
+                    ? translateSettingText("Preamble applied.", getObsidianLanguage())
+                    : "");
             }
         };
         showStatus();
@@ -413,7 +449,10 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 this.plugin.settings = previous;
                 logger.error("failed to save preamble:", error);
                 textarea.value = previous.preamble;
-                new Notice("Latest MathJax: failed to save preamble; the previous value was restored.");
+                new Notice(translateSettingText(
+                    "Latest MathJax: failed to save preamble; the previous value was restored.",
+                    getObsidianLanguage(),
+                ));
             });
         });
     }
@@ -456,6 +495,7 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         this.renderPerformanceSection(containerEl);
         this.renderCompatibilitySection(containerEl);
         this.renderDeveloperSection(containerEl);
+        localizeSettingsElement(containerEl, getObsidianLanguage());
     }
 
     // ----------------------------------------------------------- rendering mode
@@ -539,20 +579,42 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     }),
             );
 
+        new Setting(root)
+            .setName("Math font")
+            .setDesc(
+                "New Computer Modern is built in. STIX Two and Fira Math are downloaded as " +
+                    "verified, non-executable data packs only when selected.",
+            )
+            .addDropdown((dropdown) => {
+                for (const font of FONT_FAMILIES) dropdown.addOption(font.id, font.name);
+                return dropdown
+                    .setValue(this.plugin.settings.fontFamily)
+                    .onChange(async (value) => {
+                        const family = value as FontFamily;
+                        this.plugin.settings.fontFamily = family;
+                        this.plugin.settings.fontURL = defaultFontUrl(family);
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshRenderedSurfaces();
+                        this.display();
+                    });
+            });
+
         fontLocationSetting = new Setting(root)
             .setName("Font file location")
             .setDesc(
-                "Where the MathJax 4 woff2 files are fetched from. Font metrics are bundled, so " +
+                "Where the selected font's MathJax 4 woff2 files are fetched from. This changes " +
+                    "hosting, not the font family. Font metrics come from the selected font pack, so " +
                     "layout stays correct even offline — only glyph shapes fall back to a system font. " +
                     "Ignored when the renderer is SVG.",
             )
             .setDisabled(isSvg())
             .addText((text) =>
                 text
-                    .setPlaceholder(DEFAULT_FONT_URL)
+                    .setPlaceholder(defaultFontUrl(this.plugin.settings.fontFamily))
                     .setValue(this.plugin.settings.fontURL)
                     .onChange(async (value) => {
-                        this.plugin.settings.fontURL = value.trim() || DEFAULT_FONT_URL;
+                        this.plugin.settings.fontURL = value.trim() ||
+                            defaultFontUrl(this.plugin.settings.fontFamily);
                         await this.plugin.saveSettings();
                         this.plugin.refreshRenderedSurfaces();
                     }),
@@ -562,7 +624,9 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     .setIcon("rotate-ccw")
                     .setTooltip("Reset to default")
                     .onClick(async () => {
-                        this.plugin.settings.fontURL = DEFAULT_FONT_URL;
+                        this.plugin.settings.fontURL = defaultFontUrl(
+                            this.plugin.settings.fontFamily,
+                        );
                         await this.plugin.saveSettings();
                         this.plugin.refreshRenderedSurfaces();
                         this.display();
@@ -690,7 +754,9 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 status.removeClass("is-error");
                 const hasPreamble = this.plugin.settings.preamble.trim().length > 0;
                 const hasFile = this.plugin.settings.preambleFile.trim().length > 0;
-                status.setText(hasPreamble || hasFile ? "Preamble applied." : "");
+                status.setText(hasPreamble || hasFile
+                    ? translateSettingText("Preamble applied.", getObsidianLanguage())
+                    : "");
             }
         };
         showStatus();
@@ -704,7 +770,10 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                 this.plugin.refreshRenderedSurfaces();
                 showStatus();
             }).catch(() => {
-                new Notice("Latest MathJax: failed to save preamble.");
+                new Notice(translateSettingText(
+                    "Latest MathJax: failed to save preamble.",
+                    getObsidianLanguage(),
+                ));
             });
         });
     }

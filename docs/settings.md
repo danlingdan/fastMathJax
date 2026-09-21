@@ -6,14 +6,19 @@ default, numbers are clamped to their documented range, unknown package ids are 
 required packages (`base`, `ams`, …) are always re-added. A corrupt or empty `data.json`
 therefore normalizes to defaults instead of failing; it is never rewritten on load.
 
+The settings interface follows Obsidian's configured display language. Chinese locales use the
+Simplified Chinese labels and descriptions (including the invasive-mode confirmation); all other
+locales retain English. Language selection is UI-only and does not add a persisted plugin setting.
+
 | Key | Type / Range | Default | Since | Notes |
 | --- | --- | --- | --- | --- |
 | `renderer` | `"chtml" \| "svg"` | `"chtml"` | 0.1.0 | SVG output embeds glyphs; no font downloads |
+| `fontFamily` | `"newcm" \| "stix2" \| "fira"` | `"newcm"` | Unreleased | NewCM is bundled; other families require a verified optional data pack |
 | `packages` | string[] (known ids) | base, ams, newcommand, configmacros, mhchem | 0.1.0 | Required packages are re-added automatically |
 | `preamble` | string | `""` | 0.1.0 | Evaluated after `preambleFile` |
 | `preambleFile` | vault-relative path | `""` | 0.2.0 | Evaluated first; empty = disabled; trimmed |
-| `fontURL` | URL string | jsDelivr NewCM 4.1.3 | 0.1.0 | Used in `fontSource: "cdn"` mode |
-| `fontSource` | `"cdn" \| "local"` | `"cdn"` | 0.5.0 | `local` serves woff2 from the on-disk cache (`docs/offline-fonts.md`); popout documents always mirror `@font-face` rules back to the CDN because they cannot fetch `app://` |
+| `fontURL` | URL string | selected family's jsDelivr 4.1.3 path | 0.1.0 | Used in `fontSource: "cdn"` mode; changes WOFF2 hosting, not the family |
+| `fontSource` | `"cdn" \| "local"` | `"cdn"` | 0.5.0 | `local` serves family/version-isolated WOFF2 files from disk (`docs/offline-fonts.md`); popouts mirror `@font-face` rules back to that family's CDN because they cannot fetch `app://` |
 | `scale` | 0.5 – 2 | 1 | 0.1.0 | MathJax output scale |
 | `fontSize` | 8 – 48 (px) | 16 | 0.1.0 | Base em size |
 | `enableAssistiveMml` | boolean | `false` | 0.4.0 | Hidden MathML for screen readers |
@@ -33,6 +38,8 @@ therefore normalizes to defaults instead of failing; it is never rewritten on lo
 
 ## Migration and rollback semantics
 
+- **Upgrade (1.0.x → font-selection release):** missing `fontFamily` normalizes to `"newcm"` and
+  the existing NewCM `fontURL` is preserved.
 - **Upgrade (any 0.x → 1.0):** unknown persisted keys are ignored, missing keys fall back to
   defaults; `invasiveMode` therefore normalizes to `false` on first run after upgrading from
   ≤ 0.5.0 even if a corrupt value were present. No stored key was renamed or repurposed in

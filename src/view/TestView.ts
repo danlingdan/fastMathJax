@@ -89,6 +89,8 @@ export class MathJaxTestView extends ItemView {
     private displayToggle = true;
     private resultEl: HTMLElement | null = null;
     private statusEl: HTMLElement | null = null;
+    private rendererMetaEl: HTMLElement | null = null;
+    private fontMetaEl: HTMLElement | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -128,6 +130,13 @@ export class MathJaxTestView extends ItemView {
         this.contentEl.empty();
     }
 
+    /** Re-render plugin-owned output after an engine rebuild removes the old stylesheet. */
+    refresh(): void {
+        this.rendererMetaEl?.setText(`Renderer ${this.plugin.settings.renderer.toUpperCase()}`);
+        this.fontMetaEl?.setText(`Font ${this.plugin.settings.fontFamily}`);
+        this.renderNow();
+    }
+
     // ------------------------------------------------------------------ header
 
     private buildHeader(root: HTMLElement): void {
@@ -140,8 +149,11 @@ export class MathJaxTestView extends ItemView {
         meta.createSpan({
             text: `Built-in MathJax ${report?.builtIn ?? "unknown"}`,
         });
-        meta.createSpan({
+        this.rendererMetaEl = meta.createSpan({
             text: `Renderer ${this.plugin.settings.renderer.toUpperCase()}`,
+        });
+        this.fontMetaEl = meta.createSpan({
+            text: `Font ${this.plugin.settings.fontFamily}`,
         });
 
         if (report?.builtInIsNewer) {

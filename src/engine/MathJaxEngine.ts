@@ -15,11 +15,13 @@ import { isolateOutput, isolateStyles } from "./outputIsolation";
 import {
     type EngineConfig,
     configHash,
+    defaultFontUrl,
     defaultEngineConfig,
     mirrorFontUrls,
     needsRebuild,
     type PreambleSegment,
 } from "./MathJaxConfig";
+import { createPackedChtmlFont, createPackedSvgFont } from "../fonts/PackedFont";
 import { resolvePackages } from "./packages";
 import { renderCacheKey } from "../utils/hash";
 import { logger } from "../utils/logger";
@@ -115,6 +117,7 @@ let engineSequence = 0;
 function stampRevision(node: HTMLElement, engine: MathJaxEngine): void {
     node.setAttribute("data-latest-mathjax-engine", mathjax.version);
     node.setAttribute("data-latest-mathjax-revision", String(engine.revision));
+    node.setAttribute("data-latest-mathjax-style", engine.styleScope);
 }
 
 /**
@@ -158,6 +161,8 @@ export class MathJaxEngine {
     private fontFaceCss = "";
     private readonly styleElementId = `${STYLE_ELEMENT_ID}-${++engineSequence}`;
     private readonly fontFaceElementId = `${FONT_FACE_ELEMENT_ID}-${engineSequence}`;
+    /** Unique CSS scope so simultaneous engines with different fonts cannot share metrics. */
+    readonly styleScope = `s${engineSequence}`;
     /** Element id carrying this instance's adaptive glyph rules (exposed for tests). */
     get styleId(): string {
         return this.styleElementId;
@@ -212,9 +217,18 @@ export class MathJaxEngine {
     private build(): void {
         const config = this.config;
         const packages = resolvePackages(config.packages);
+        if (config.fontFamily !== "newcm" && !config.fontPack) {
+            throw new Error(`font pack is not loaded for ${config.fontFamily}`);
+        }
+        const chtmlFont = config.fontPack
+            ? createPackedChtmlFont(config.fontPack)
+            : MathJaxNewcmFont;
+        const svgFont = config.fontPack
+            ? createPackedSvgFont(config.fontPack)
+            : MathJaxNewcmSvgFont;
 
         resetBundledFontState(
-            config.renderer === "svg" ? MathJaxNewcmSvgFont : MathJaxNewcmFont,
+            config.renderer === "svg" ? svgFont : chtmlFont,
         );
 
         const inputJax = new TeX<HTMLElement, Text, Document>({
@@ -229,7 +243,7 @@ export class MathJaxEngine {
         const outputJax =
             config.renderer === "svg"
                 ? new SVG<HTMLElement, Text, Document>({
-                      fontData: MathJaxNewcmSvgFont,
+                      fontData: svgFont,
                       // SVG embeds glyph path data inline (DefaultFont), so it needs no external
                       // webfont. `fontCache: "local"` puts the shared glyph definitions inside each
                       // equation's <svg>; "global" would share one cache across the document.
@@ -239,7 +253,7 @@ export class MathJaxEngine {
                       displayIndent: "0",
                   })
                 : new CHTML<HTMLElement, Text, Document>({
-                      fontData: MathJaxNewcmFont,
+                      fontData: chtmlFont,
                       // Font-specific options are separated out automatically by CommonOutputJax.
                       fontURL: config.fontURL,
                       scale: config.scale,
@@ -350,7 +364,7 @@ export class MathJaxEngine {
                 ...this.metrics(),
             }) as HTMLElement;
             stampRevision(node, this);
-            if (this.config.isolationEnabled) isolateOutput(node);
+            if (this.config.isolationEnabled) isolateOutput(node, this.styleScope);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -392,7 +406,7 @@ export class MathJaxEngine {
                 ...this.metrics(),
             })) as HTMLElement;
             stampRevision(node, this);
-            if (this.config.isolationEnabled) isolateOutput(node);
+            if (this.config.isolationEnabled) isolateOutput(node, this.styleScope);
             this.renders++;
             this.cache.set(key, node);
             this.scheduleStyleFlush();
@@ -497,7 +511,7 @@ export class MathJaxEngine {
                 this.serializedRuleCount = -1;
             }
             if (sheet.sheet && this.config.isolationEnabled) {
-                isolateStyles(sheet.sheet.cssRules);
+                isolateStyles(sheet.sheet.cssRules, this.styleScope);
                 this.serializedRuleCount = -1;
             }
             this.syncSerializedStyles(sheet);
@@ -551,7 +565,7 @@ export class MathJaxEngine {
                 >,
             );
             for (const face of faces) {
-                if (face.status === "unloaded" && face.family.includes("NCM")) {
+                if (face.status === "unloaded" && face.family.includes("MJX-")) {
                     void face.load().catch(() => undefined);
                 }
             }
@@ -697,7 +711,11 @@ export class MathJaxEngine {
      * cross-document copies. No-op when the engine already runs on the CDN base.
      */
     private mirrorCss(css: string): string {
-        return mirrorFontUrls(css, this.config.fontURL);
+        return mirrorFontUrls(
+            css,
+            this.config.fontURL,
+            defaultFontUrl(this.config.fontFamily),
+        );
     }
 
     private serializedStyles(): string {

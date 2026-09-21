@@ -8,6 +8,7 @@ import {
     finishRenderMath,
     loadMathJax,
     renderMath,
+    requestUrl,
 } from "obsidian";
 
 import { MathJaxEngine } from "./engine/MathJaxEngine";
@@ -30,8 +31,14 @@ import {
 } from "./preamble/preambleModel";
 import { LocalFontCache } from "./fonts/LocalFontCache";
 import {
+    FontPackManager,
+    type FontFamily,
+} from "./fonts/FontPackManager";
+import type { DownloadedFontPack } from "./fonts/PackedFont";
+import {
     DEFAULT_FONT_URL,
     MATHJAX_FONT_VERSION,
+    defaultFontUrl,
     type EngineConfig,
 } from "./engine/MathJaxConfig";
 import { logger } from "./utils/logger";
@@ -68,6 +75,9 @@ export default class LatestMathJaxPlugin extends Plugin {
     private preambleFileProblem: PreambleProblem | null = null;
     private preambleFiles!: PreambleFileService;
     private fontCache: LocalFontCache | null = null;
+    private fontPacks!: FontPackManager;
+    private activeFontPack: DownloadedFontPack | null = null;
+    private fontCacheFamily: FontFamily | null = null;
     /** Vault-relative cache dir of the current font version, once a cache exists. */
     private localFontResourceDir: string | null = null;
     /** The font URL currently applied to the engine, to avoid redundant reconfigurations. */
@@ -83,6 +93,21 @@ export default class LatestMathJaxPlugin extends Plugin {
         await this.loadSettings();
         logger.setEnabled(this.settings.debugMode);
 
+        const pluginDir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
+        this.fontPacks = new FontPackManager({
+            adapter: this.app.vault.adapter,
+            pluginDir,
+            pluginVersion: this.manifest.version,
+            download: async (url) => (await requestUrl({ url })).arrayBuffer,
+        });
+        if (this.settings.fontFamily !== "newcm") {
+            try {
+                this.activeFontPack = await this.fontPacks.loadCached(this.settings.fontFamily);
+            } catch (error) {
+                logger.warn("cached font pack rejected:", error);
+            }
+        }
+
         this.engine = new MathJaxEngine(
             this.engineConfig(),
             this.settings.cacheEnabled ? this.settings.cacheSize : 0,
@@ -95,12 +120,7 @@ export default class LatestMathJaxPlugin extends Plugin {
             this.bridge = this.createBridge();
             this.bridge.preinstall();
         }
-        this.fontCache = new LocalFontCache({
-            adapter: this.app.vault.adapter,
-            pluginDir: this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`,
-            fontVersion: MATHJAX_FONT_VERSION,
-            sourceRoot: DEFAULT_FONT_URL,
-        });
+        this.resetFontCache();
         this.preambleFiles = new PreambleFileService({
             getRawPath: () => this.settings.preambleFile,
             readFile: (path) => this.app.vault.adapter.read(path),
@@ -237,6 +257,7 @@ export default class LatestMathJaxPlugin extends Plugin {
         this.preambleFiles?.dispose();
         this.fontCache?.dispose();
         this.fontCache = null;
+        this.fontPacks?.dispose();
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
         this.engine?.dispose();
@@ -260,6 +281,8 @@ export default class LatestMathJaxPlugin extends Plugin {
         // path changed, re-read before rebuilding — otherwise the engine would evaluate the
         // previous file's content under the new path's label until the next reload.
         await this.preambleFiles.reloadIfPathChanged();
+        await this.prepareSelectedFontPack();
+        this.resetFontCache();
         // Font source changes are applied here too. In local mode with an incomplete cache this
         // kicks off the background download and re-applies the font URL when it completes;
         // meanwhile the engine stays on the CDN fallback (docs/offline-fonts.md).
@@ -277,8 +300,26 @@ export default class LatestMathJaxPlugin extends Plugin {
     /** The engine configuration for the current settings, with the effective font URL applied. */
     private engineConfig(): EngineConfig {
         const config = toEngineConfig(this.settings, this.filePreamble);
-        config.fontURL = this.effectiveFontUrl();
+        const selectedPack = this.settings.fontFamily === "newcm"
+            ? null
+            : this.activeFontPack?.id === this.settings.fontFamily
+                ? this.activeFontPack
+                : null;
+        if (this.settings.fontFamily !== "newcm" && !selectedPack) {
+            config.fontFamily = "newcm";
+            config.fontURL = DEFAULT_FONT_URL;
+        } else {
+            config.fontPack = selectedPack ?? undefined;
+            config.fontURL = this.effectiveFontUrl();
+        }
         return config;
+    }
+
+    private effectiveFontFamily(): FontFamily {
+        return this.settings.fontFamily === "newcm" ||
+            this.activeFontPack?.id === this.settings.fontFamily
+            ? this.settings.fontFamily
+            : "newcm";
     }
 
     /**
@@ -293,6 +334,45 @@ export default class LatestMathJaxPlugin extends Plugin {
             return this.app.vault.adapter.getResourcePath(this.localFontResourceDir);
         }
         return this.settings.fontURL;
+    }
+
+    private resetFontCache(): void {
+        const family = this.effectiveFontFamily();
+        if (this.fontCacheFamily === family && this.fontCache) return;
+        this.fontCache?.dispose();
+        this.localFontResourceDir = null;
+        this.appliedFontUrl = null;
+        this.fontCacheFamily = family;
+        this.fontCache = new LocalFontCache({
+            adapter: this.app.vault.adapter,
+            pluginDir: this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`,
+            fontId: family,
+            fontVersion: MATHJAX_FONT_VERSION,
+            sourceRoot: defaultFontUrl(family),
+        });
+    }
+
+    private async prepareSelectedFontPack(): Promise<void> {
+        const family = this.settings.fontFamily;
+        if (family === "newcm") {
+            this.activeFontPack = null;
+            return;
+        }
+        if (this.activeFontPack?.id === family) return;
+        try {
+            const pack = await this.fontPacks.ensure(family);
+            if (this.disposed || this.settings.fontFamily !== family) return;
+            this.activeFontPack = pack;
+            new Notice(`Latest MathJax: ${pack?.name ?? family} font pack is ready.`);
+        } catch (error) {
+            logger.warn(`font pack download failed for ${family}:`, error);
+            if (this.settings.fontFamily === family) {
+                new Notice(
+                    `Latest MathJax: could not download the ${family} font pack; ` +
+                        "New Computer Modern remains active. Retry by selecting the font again.",
+                );
+            }
+        }
     }
 
     /**
@@ -340,6 +420,8 @@ export default class LatestMathJaxPlugin extends Plugin {
     }
 
     private async downloadFontsCommand(): Promise<void> {
+        await this.prepareSelectedFontPack();
+        this.resetFontCache();
         if (!this.fontCache) return;
         if (!this.engine.isInitialised) this.engine.initialise();
         const names = this.engine.getFontFaceUrls().map((url) => url.split("/").pop() ?? url);
@@ -387,6 +469,7 @@ export default class LatestMathJaxPlugin extends Plugin {
 
         this.app.workspace.iterateAllLeaves((leaf) => {
             if (leaf.view instanceof MarkdownView) leaf.view.previewMode.rerender(true);
+            if (leaf.view instanceof MathJaxTestView) leaf.view.refresh();
         });
         this.app.workspace.updateOptions();
     }
@@ -626,6 +709,13 @@ export default class LatestMathJaxPlugin extends Plugin {
         } catch (err) {
             logger.error("engine initialisation failed:", err);
             new Notice("Latest MathJax: engine failed to start, see console for details.");
+        }
+        if (this.settings.fontFamily !== "newcm" && !this.activeFontPack) {
+            await this.prepareSelectedFontPack();
+            if (this.activeFontPack) {
+                this.resetFontCache();
+                if (this.engine.updateConfig(this.engineConfig())) this.refreshRenderedSurfaces();
+            }
         }
         // The stylesheet (and its @font-face download set) exists after initialisation; local
         // mode downloads in the background and re-applies the font URL on completion.

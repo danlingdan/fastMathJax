@@ -4,6 +4,8 @@
 
 **An up-to-date MathJax 4 engine for Obsidian — bundled, fully isolated, PDF-safe.**
 
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 [![Latest release](https://img.shields.io/github/v/release/danlingdan/fastMathJax?logo=github&label=release)](https://github.com/danlingdan/fastMathJax/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/danlingdan/fastMathJax/ci.yml?branch=main&label=CI)](https://github.com/danlingdan/fastMathJax/actions/workflows/ci.yml)
 ![Obsidian](https://img.shields.io/badge/Obsidian-1.8.0%2B-7c3aed?logo=obsidian&logoColor=white)
@@ -38,7 +40,10 @@ hover previews and embeds — upgrades to the bundled engine.
   automatic fail-closed fallback to the default mode. *(new in 1.0.0)*
 - **Deterministic PDF export** — an isolated SVG print engine embeds glyph paths, so exports are
   pixel-stable and offline-safe from either editor mode.
-- **CHTML or SVG output** — New Computer Modern webfonts from a CDN, or fully offline SVG.
+- **Selectable math fonts** — New Computer Modern is built in; STIX Two and Fira Math are
+  downloaded as version-pinned, SHA-256-verified data packs only when selected. Both CHTML and
+  SVG/PDF use the chosen font.
+- **CHTML or SVG output** — CommonHTML uses the selected font's webfonts; SVG embeds glyph paths.
 - **Popout windows** — styled automatically in both modes; popout sheets mirror the engine's
   live stylesheet, and local font URLs are rewritten to the CDN for popout documents.
 - **Macro diagnostics** — parse failures name the file or settings text they came from; the
@@ -55,6 +60,9 @@ hover previews and embeds — upgrades to the bundled engine.
    [latest release](https://github.com/danlingdan/fastMathJax/releases/latest).
 2. Put all three files under `<vault>/.obsidian/plugins/latest-mathjax/`.
 3. Reload Obsidian and enable **Latest MathJax** under *Settings → Community plugins*.
+
+The optional STIX Two and Fira Math packs are fetched from the matching GitHub release the first
+time they are selected. They are data-only gzip files, not downloaded JavaScript.
 
 Reading View takeover is on by default; Live Preview takeover and inline-math takeover are
 opt-in switches under *Settings → Latest MathJax → Compatibility*.
@@ -100,8 +108,9 @@ Desktop only for now; a mobile acceptance pass is pending. See
 - **Rendering mode** — invasive mode (experimental, default off). Enabling it always opens a
   confirmation dialog listing benefits and risks; the per-surface toggles are managed by
   invasive mode while it is active.
-- **Engine** — renderer (CHTML / SVG), scale, font file location, TeX packages, preamble file,
-  global preamble, assistive MathML.
+- **Engine** — renderer (CHTML / SVG), math font, font file location, TeX packages, preamble file,
+  global preamble, assistive MathML. The font location changes hosting for the selected family; it
+  is not itself a font selector.
 - **Performance** — formula cache on/off + size, render debounce.
 - **Compatibility** — per-surface toggles with safe defaults; fallback mode when a formula
   cannot be rendered.
@@ -157,7 +166,8 @@ To try it in a vault, copy `main.js`, `manifest.json` and `styles.css` into
 <summary>Releasing</summary>
 
 Releases are built by GitHub Actions from a plain SemVer tag (`0.2.0`, not `v0.2.0`) — never
-upload generated assets manually. Prepare the version, update `CHANGELOG.md`, pass
+upload generated assets manually. The workflow publishes the three core plugin files plus the
+generated, attested optional font packs. Prepare the version, update `CHANGELOG.md`, pass
 `npm run check`, then:
 
 ```bash
@@ -169,8 +179,8 @@ git tag -a "0.2.0" -m "Latest MathJax 0.2.0"
 git push origin "0.2.0"
 ```
 
-The tag workflow verifies version consistency, runs the complete check, attests build
-provenance, and publishes `main.js`, `manifest.json` and `styles.css`.
+The tag workflow verifies version consistency and font-pack hashes, runs the complete check,
+attests build provenance, and publishes the core files plus optional font packs.
 
 </details>
 

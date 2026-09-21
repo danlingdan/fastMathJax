@@ -22,6 +22,27 @@ describe("MathJax output isolation", () => {
         expect(root.outerHTML).toBe(html);
     });
 
+    it("binds renamed nodes and selectors to one engine style scope", () => {
+        const root = document.createElement("mjx-container");
+        root.innerHTML = "<mjx-math><mjx-mi><mjx-c>x</mjx-c></mjx-mi></mjx-math>";
+        isolateOutput(root, "engine-2");
+        expect(root.querySelectorAll('[data-latest-mathjax-style="engine-2"]')).toHaveLength(3);
+
+        const style = document.createElement("style");
+        style.textContent = "mjx-container mjx-math, mjx-mi > mjx-c { display: inline-block; }";
+        document.head.appendChild(style);
+        isolateStyles(style.sheet!.cssRules, "engine-2");
+        const css = Array.from(style.sheet!.cssRules, (rule) => rule.cssText).join("\n");
+        expect(css).toContain(
+            'mjx-container[data-latest-mathjax-engine][data-latest-mathjax-style="engine-2"]',
+        );
+        expect(css).toContain(
+            'latest-mjx-c[data-latest-mathjax-style="engine-2"]',
+        );
+        isolateStyles(style.sheet!.cssRules, "engine-2");
+        expect(Array.from(style.sheet!.cssRules, (rule) => rule.cssText).join("\n")).toBe(css);
+    });
+
     it("scopes grouped and nested rules without changing glyph classes or font URLs", () => {
         const style = document.createElement("style");
         style.textContent = 'mjx-container[jax="CHTML"] mjx-c.mjx-c32, mjx-sqrt > mjx-box { display: block; } @media print { mjx-container [size="s"] { font-size: 70%; } } @font-face { font-family: MJX-NCM; src: url("mjx-font.woff2"); }';
@@ -51,7 +72,7 @@ describe("MathJax output isolation", () => {
             expect(cached.querySelector("mjx-c")).toBeNull();
             expect(cached.ownerDocument).toBe(popout);
             expect(popout.querySelector("[id^=latest-mathjax-chtml-styles]")?.textContent)
-                .toContain("latest-mjx-sqrt > latest-mjx-box");
+                .toMatch(/latest-mjx-sqrt[^>]+> latest-mjx-box/);
             expect(engine.stats.cache.hits).toBe(1);
         } finally {
             engine.dispose();

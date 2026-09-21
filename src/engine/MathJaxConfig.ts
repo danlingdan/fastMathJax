@@ -1,5 +1,7 @@
 import { fnv1a } from "../utils/hash";
 import { defaultEnabledPackages, resolvePackages } from "./packages";
+import type { DownloadedFontPack } from "../fonts/PackedFont";
+import type { FontFamily } from "../fonts/FontPackManager";
 
 export const MATHJAX_FONT_VERSION = "4.1.3";
 
@@ -14,6 +16,10 @@ export const MATHJAX_FONT_VERSION = "4.1.3";
 export const DEFAULT_FONT_URL =
     `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-newcm-font@${MATHJAX_FONT_VERSION}/chtml/woff2`;
 
+export function defaultFontUrl(family: FontFamily): string {
+    return `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-${family}-font@${MATHJAX_FONT_VERSION}/chtml/woff2`;
+}
+
 /**
  * Rewrites the active font URL base to the bundled CDN default for cross-document copies.
  *
@@ -23,9 +29,9 @@ export const DEFAULT_FONT_URL =
  * rendering unaffected); only the mirrored stylesheet points back at the CDN. No-op when the
  * engine already runs on the CDN base.
  */
-export function mirrorFontUrls(css: string, fontURL: string): string {
-    if (fontURL === DEFAULT_FONT_URL) return css;
-    return css.split(fontURL).join(DEFAULT_FONT_URL);
+export function mirrorFontUrls(css: string, fontURL: string, cdnFontURL = DEFAULT_FONT_URL): string {
+    if (fontURL === cdnFontURL) return css;
+    return css.split(fontURL).join(cdnFontURL);
 }
 
 export type RendererKind = "chtml" | "svg";
@@ -47,6 +53,10 @@ export interface PreambleSegment {
  */
 export interface EngineConfig {
     renderer: RendererKind;
+    /** Selected MathJax font family. Non-default families require a verified downloaded pack. */
+    fontFamily: FontFamily;
+    /** Runtime-only verified data for a downloaded font family. Never persisted. */
+    fontPack?: DownloadedFontPack;
     /** MathJax package names, see packages.ts. */
     packages: string[];
     /** LaTeX evaluated once at engine start; \newcommand definitions persist for the session. */
@@ -75,6 +85,7 @@ export interface EngineConfig {
 export function defaultEngineConfig(): EngineConfig {
     return {
         renderer: "chtml",
+        fontFamily: "newcm",
         packages: defaultEnabledPackages(),
         preamble: "",
         fontSize: 16,
@@ -94,6 +105,7 @@ export function defaultEngineConfig(): EngineConfig {
 export function configHash(config: EngineConfig): string {
     const parts = [
         MATHJAX_FONT_VERSION,
+        config.fontFamily,
         config.renderer,
         resolvePackages(config.packages).join(","),
         config.preamble,
@@ -114,6 +126,8 @@ export function configHash(config: EngineConfig): string {
 export function needsRebuild(a: EngineConfig, b: EngineConfig): boolean {
     return (
         a.renderer !== b.renderer ||
+        a.fontFamily !== b.fontFamily ||
+        a.fontURL !== b.fontURL ||
         a.preamble !== b.preamble ||
         a.enableAssistiveMml !== b.enableAssistiveMml ||
         a.isolationEnabled !== b.isolationEnabled ||

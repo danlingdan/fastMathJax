@@ -9,6 +9,8 @@ procedure lives in [`benchmarks.md`](benchmarks.md); this page covers functional
 1. Create a clean vault (or reuse `tmp/obsidian-test-vault`, which is gitignored) and install the
    release build: copy `main.js`, `manifest.json`, `styles.css` into
    `.obsidian/plugins/latest-mathjax/`, then enable the plugin.
+   For an unpublished local candidate, copy generated `font-packs/*.json.gz` files into
+   `.obsidian/plugins/latest-mathjax/font-packs/`; a published build downloads them automatically.
 2. Copy the fixtures you need from `benchmarks/fixtures/` and, for preamble checks, place
    `benchmarks/preamble/benchmark-preamble.tex` in the vault root.
 3. Keep settings at defaults unless a step says otherwise. Live Preview rendering and inline
@@ -21,6 +23,7 @@ procedure lives in [`benchmarks.md`](benchmarks.md); this page covers functional
 | Reading View | Open `benchmarks/fixtures/surface-contexts.md`, switch to Reading View | Formulas render with the bundled engine; no error blocks beyond the intentional ones |
 | Live Preview | Enable **Live Preview rendering** (and inline), switch the note to editing mode | Mounted math widgets are replaced by bundled output; editing a formula shows raw TeX, leaving re-renders it |
 | Renderer switch | Settings → switch renderer CHTML ↔ SVG | Open views refresh; fonts stay correct; no console errors |
+| Font switch | Select New Computer Modern → STIX Two → Fira Math in both CHTML and SVG | The optional pack downloads once, formulas visibly change family, matrices/radicals/arrows remain aligned, and PDF export matches the selected family |
 | Cache statistics | Render a few formulas, open Settings → Latest MathJax | The statistics line shows entries, hits, misses, hit rate and session renders; **Clear cache** resets them to zero (PERF-05) |
 | Preamble file | Set **Preamble file** to `benchmark-preamble.tex`; edit the file in an external editor | Macros render in both views after the debounced reload; parse failures are attributed to the file while earlier definitions keep working |
 | Preamble switch | Change **Preamble file** to another path, then back | The newly configured file's macros render immediately after the settings change — no manual reload needed (0.2.0 regression) |

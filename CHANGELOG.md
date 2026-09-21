@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.1.0 - Unreleased
+
+- Added real MathJax font selection for **New Computer Modern**, **STIX Two**, and **Fira Math**.
+  NewCM remains bundled; STIX Two and Fira are generated at build time as non-executable gzip data
+  packs and downloaded only when selected. The runtime verifies exact byte length, SHA-256,
+  schema, family and MathJax font version before caching or parsing a pack.
+- Applied the selected family consistently to CommonHTML, SVG, invasive mode, popout mirrors and
+  PDF export. CommonHTML's optional WOFF2 cache is now isolated by family and version. Each engine
+  instance also scopes its generated character metrics so a later font cannot restyle existing
+  output from another family.
+- Added a Simplified Chinese README and a Chinese settings interface that follows Obsidian's
+  configured language while retaining the Obsidian 1.8.0 compatibility path.
+- Kept the production `main.js` increase to about 30 KB including font selection and localization
+  (12,217,190 → 12,247,601 bytes); the
+  optional STIX Two and Fira packs are about 19.3 MB and 12.1 MB compressed respectively.
+- Expanded automated coverage to 192 tests across 29 files, including real CHTML and SVG renders
+  from both downloaded packs, corruption rejection, cache reuse and settings migration.
+
 ## 1.0.1 - 2026-09-08
 
 - Fixed the `obsidianmd/no-forbidden-elements` static-check violations flagged during the

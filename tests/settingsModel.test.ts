@@ -35,6 +35,16 @@ describe("normalizeSettings", () => {
         expect(normalizeSettings({}).fontSource).toBe(DEFAULT_SETTINGS.fontSource);
     });
 
+    it("migrates missing font families to NewCM and accepts downloadable families", () => {
+        expect(normalizeSettings({}).fontFamily).toBe("newcm");
+        expect(normalizeSettings({ fontFamily: "stix2" }).fontFamily).toBe("stix2");
+        expect(normalizeSettings({ fontFamily: "stix2" }).fontURL).toBe(
+            "https://cdn.jsdelivr.net/npm/@mathjax/mathjax-stix2-font@4.1.3/chtml/woff2",
+        );
+        expect(normalizeSettings({ fontFamily: "fira" }).fontFamily).toBe("fira");
+        expect(normalizeSettings({ fontFamily: "unknown" as "newcm" }).fontFamily).toBe("newcm");
+    });
+
     it("deduplicates known packages and restores required packages", () => {
         const settings = normalizeSettings({ packages: ["ams", "ams", "unknown"] });
         expect(settings.packages.filter((pkg) => pkg === "ams")).toHaveLength(1);

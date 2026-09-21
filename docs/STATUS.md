@@ -1,8 +1,47 @@
 # Project status
 
-Latest MathJax `1.0.0` adds the experimental **invasive mode** (off by default, confirmation
-dialog gated) on top of the complete stable-contract line; see the release section below. The
-plugin remains desktop-only until a separate mobile acceptance pass is completed.
+Latest published version: `1.0.1`. The current `main` branch is the unpublished `1.1.0` candidate
+with downloadable STIX Two and Fira Math support described below. The plugin remains desktop-only
+until a separate mobile acceptance pass.
+
+## Unreleased — downloadable math-font packs
+
+The **Math font** setting now selects New Computer Modern, STIX Two or Fira Math. NewCM remains in
+`main.js`; the other families are build-time exports of the official MathJax 4.1.3 packages and are
+published as non-executable `.json.gz` release assets. Selecting one downloads it once, verifies
+its fixed compressed/expanded sizes, SHA-256, schema, family and version, then caches it under the
+plugin directory. Failure leaves NewCM active with a visible retry path. No remote JavaScript is
+loaded or evaluated.
+
+The selected family feeds the same engine configuration in CHTML, SVG, default/invasive modes,
+popouts and the private PDF engine. WOFF2 local caches are keyed by family and version; popouts
+rewrite local URLs to the selected family's pinned CDN. Including the Chinese settings localization,
+the production bundle grew by 30,411 bytes (12,217,190 → 12,247,601); optional packs are
+19,301,788 bytes (STIX Two) and 12,105,665 bytes
+(Fira) compressed.
+
+The GitHub README now links to a Simplified Chinese edition. The settings page and invasive-mode
+confirmation follow Obsidian's configured language: Chinese locales use Chinese and all others
+retain English. Obsidian 1.8.7+ uses the public language API; the 1.8.0–1.8.6 compatibility path
+uses the language already applied to the app document.
+
+Automated gates currently pass: 192 tests across 29 files, including real CHTML/SVG rendering from
+both packs, corruption rejection and cache reuse; lint, typecheck, production build, release-pack
+hash/size validation, `npm audit --omit=dev` (0 vulnerabilities), and `git diff --check`. Desktop
+smoke testing in the isolated vault caught stale output in the render-test view after an engine
+rebuild: its old formula nodes remained mounted after their stylesheet was removed, leaving glyphs
+without fraction/operator layout. Engine rebuilds now refresh that plugin-owned view as well as
+Markdown and editor surfaces; a regression test also requires the isolated fraction and line
+selectors. The corrected build still needs desktop re-verification before release, followed by all three
+families across CHTML/SVG, Reading View, Live Preview, invasive mode, popouts, PDF export, offline
+restart and family switching.
+
+A standalone Chromium layout harness exposed a second defect: simultaneous CHTML engines shared
+generic glyph selectors, so the last-loaded family's character metrics restyled NewCM and every
+earlier result. Generated selectors and output nodes are now bound to a unique engine scope. The
+same page then measured distinct plus-glyph widths for NewCM (12.45 px), STIX Two (11.51 px) and
+Fira (8 px), with valid fraction geometry and unique scopes. This closes the DOM-only and
+cross-family-CSS gaps but does not replace the remaining Obsidian surface matrix.
 
 ## 1.0.0 — invasive mode + stable contract (release candidate, 2026-09-08)
 
@@ -223,7 +262,7 @@ Release: tag `0.3.0` built and published by GitHub Actions with provenance attes
 ## Completed
 
 - Isolated MathJax `4.1.3` engine; Obsidian's global MathJax is never replaced or patched.
-- CommonHTML and SVG output using bundled New Computer Modern glyph chunks.
+- CommonHTML and SVG output using bundled NewCM or verified optional STIX Two/Fira data packs.
 - Reading View display and inline rendering.
 - Live Preview display and inline rendering using Obsidian's mounted math widgets and CodeMirror document positions.
 - Deterministic PDF export from either editor mode using an isolated SVG print renderer.
@@ -271,10 +310,13 @@ code exclusion and readable raw fallback. Poppler-rendered page PNGs were pixel-
 
 ## Release artifacts
 
-Install these three generated files under `.obsidian/plugins/latest-mathjax/`:
+Install these three core generated files under `.obsidian/plugins/latest-mathjax/`:
 
 - `main.js`
 - `manifest.json`
 - `styles.css`
 
-`main.js` is intentionally large (about 12 MB) because all CommonHTML and SVG New Computer Modern glyph chunks are bundled. SVG is self-contained and offline-safe. CommonHTML bundles metrics and code but loads its configured New Computer Modern webfonts from jsDelivr by default. Run `npm run check` before distribution.
+GitHub releases additionally contain the optional, attested STIX Two and Fira data packs; the
+plugin downloads them on selection. `main.js` remains about 12.2 MB because all CommonHTML and SVG
+NewCM glyph chunks are bundled. SVG needs no WOFF2; CommonHTML loads the selected family's webfonts
+from jsDelivr by default or its family/version local cache. Run `npm run check` before distribution.
