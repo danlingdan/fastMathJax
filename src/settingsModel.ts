@@ -5,7 +5,7 @@ import {
     type EngineConfig,
     type RendererKind,
 } from "./engine/MathJaxConfig";
-import type { FontFamily } from "./fonts/FontPackManager";
+import { isFontFamily, type FontFamily } from "./fonts/FontPackManager";
 import { buildPreambleSegments, mergePreambles } from "./preamble/preambleModel";
 
 export type FallbackMode = "raw" | "obsidian" | "error";
@@ -106,11 +106,7 @@ export function normalizeSettings(
     if (stored.renderer === "chtml" || stored.renderer === "svg") {
         settings.renderer = stored.renderer;
     }
-    if (
-        stored.fontFamily === "newcm" ||
-        stored.fontFamily === "stix2" ||
-        stored.fontFamily === "fira"
-    ) {
+    if (isFontFamily(stored.fontFamily)) {
         settings.fontFamily = stored.fontFamily;
         if (typeof stored.fontURL !== "string" || !stored.fontURL.trim()) {
             settings.fontURL = defaultFontUrl(stored.fontFamily);

@@ -31,13 +31,17 @@ function fakeAdapter(initial = new Map<string, ArrayBuffer>()) {
 }
 
 describe("FontPackManager", () => {
+    it("uses a platform-neutral gzip header for reproducible release hashes", () => {
+        expect(STIX_PACK[9]).toBe(255);
+    });
+
     it("downloads, verifies, caches and reuses a non-executable font pack", async () => {
         const state = fakeAdapter();
         const download = vi.fn(async () => arrayBuffer(STIX_PACK));
         const manager = new FontPackManager({
             adapter: state.adapter,
             pluginDir: ".obsidian/plugins/latest-mathjax",
-            pluginVersion: "1.1.0",
+            pluginVersion: "1.2.0",
             releaseBaseUrl: "https://release.example",
             download,
         });
@@ -48,7 +52,7 @@ describe("FontPackManager", () => {
         expect(second).toBe(first);
         expect(download).toHaveBeenCalledOnce();
         expect(download).toHaveBeenCalledWith(
-            "https://release.example/1.1.0/mathjax-font-stix2-4.1.3.json.gz",
+            "https://release.example/1.2.0/mathjax-font-stix2-4.1.3.json.gz",
         );
         expect([...state.files.keys()]).toEqual([
             ".obsidian/plugins/latest-mathjax/font-packs/mathjax-font-stix2-4.1.3.json.gz",
@@ -62,7 +66,7 @@ describe("FontPackManager", () => {
         const manager = new FontPackManager({
             adapter: state.adapter,
             pluginDir: ".obsidian/plugins/latest-mathjax",
-            pluginVersion: "1.1.0",
+            pluginVersion: "1.2.0",
             download: async () => arrayBuffer(STIX_PACK),
         });
 

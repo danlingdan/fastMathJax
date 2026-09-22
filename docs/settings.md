@@ -13,7 +13,7 @@ locales retain English. Language selection is UI-only and does not add a persist
 | Key | Type / Range | Default | Since | Notes |
 | --- | --- | --- | --- | --- |
 | `renderer` | `"chtml" \| "svg"` | `"chtml"` | 0.1.0 | SVG output embeds glyphs; no font downloads |
-| `fontFamily` | `"newcm" \| "stix2" \| "fira"` | `"newcm"` | Unreleased | NewCM is bundled; other families require a verified optional data pack |
+| `fontFamily` | `"newcm" \| "asana" \| "bonum" \| "dejavu" \| "fira" \| "modern" \| "pagella" \| "schola" \| "stix2" \| "termes" \| "tex"` | `"newcm"` | 1.1.0; expanded in 1.2.0 | NewCM is bundled; every other family requires a verified optional data pack |
 | `packages` | string[] (known ids) | base, ams, newcommand, configmacros, mhchem | 0.1.0 | Required packages are re-added automatically |
 | `preamble` | string | `""` | 0.1.0 | Evaluated after `preambleFile` |
 | `preambleFile` | vault-relative path | `""` | 0.2.0 | Evaluated first; empty = disabled; trimmed |

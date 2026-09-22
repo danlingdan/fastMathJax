@@ -90,8 +90,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
                     },
                     {
                         name: "Math font",
-                        desc: "New Computer Modern is built in. STIX Two and Fira Math are " +
-                            "downloaded as verified data packs only when selected.",
+                        desc: "New Computer Modern is built in. Every other official MathJax 4 " +
+                            "font is downloaded as a verified data pack only when selected.",
                         control: {
                             type: "dropdown",
                             key: "fontFamily",
@@ -582,8 +582,8 @@ export class LatestMathJaxSettingTab extends PluginSettingTab {
         new Setting(root)
             .setName("Math font")
             .setDesc(
-                "New Computer Modern is built in. STIX Two and Fira Math are downloaded as " +
-                    "verified, non-executable data packs only when selected.",
+                "New Computer Modern is built in. Every other official MathJax 4 font is " +
+                    "downloaded as a verified, non-executable data pack only when selected.",
             )
             .addDropdown((dropdown) => {
                 for (const font of FONT_FAMILIES) dropdown.addOption(font.id, font.name);

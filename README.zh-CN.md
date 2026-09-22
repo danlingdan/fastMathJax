@@ -29,7 +29,8 @@ Obsidian 自带的 MathJax 通常落后于上游版本。新 TeX 宏包、字体
 
 - **MathJax 4.1.3**：使用较新的 TeX 输入和渲染能力。
 - **阅读视图与实时预览**：支持行间公式，并可选择接管行内公式。
-- **三种数学字体**：内置 New Computer Modern；STIX Two 和 Fira Math 在首次选择时按需下载。
+- **全部 11 套官方数学字体**：内置 New Computer Modern；Asana Math、五套 Gyre 字体、
+  Fira Math、Latin Modern、STIX Two 和 MathJax TeX 在首次选择时按需下载。
 - **安全字体包**：下载内容是不可执行的 gzip 数据包，使用固定大小、SHA-256、结构、字体系列和版本进行校验。
 - **CommonHTML 或 SVG**：CommonHTML 使用 Web 字体；SVG 内嵌字形路径，适合离线使用和 PDF 导出。
 - **库内导言文件**：可将宏保存在版本可控的 `.tex` 文件中；文件变化后自动重新载入。
@@ -48,7 +49,7 @@ Obsidian 自带的 MathJax 通常落后于上游版本。新 TeX 宏包、字体
 
 ## 字体与离线使用
 
-New Computer Modern 的渲染数据包含在 `main.js` 中。STIX Two 和 Fira Math 不会增加核心插件体积，而是在用户首次选择时从对应版本的 GitHub Release 下载，并缓存到插件目录。
+New Computer Modern 的渲染数据包含在 `main.js` 中。其余 10 套官方字体不会增加核心插件体积，而是在用户首次选择时从对应版本的 GitHub Release 下载，并缓存到插件目录。
 
 CommonHTML 仍需 WOFF2 字形文件。你可以选择：
 

@@ -12,10 +12,22 @@ const SCHEMA_VERSION = 1;
 
 const FONTS = [
     {
-        id: "stix2",
-        name: "STIX Two",
-        packageName: "@mathjax/mathjax-stix2-font",
-        exportName: "MathJaxStix2Font",
+        id: "asana",
+        name: "Asana Math",
+        packageName: "@mathjax/mathjax-asana-font",
+        exportName: "MathJaxAsanaFont",
+    },
+    {
+        id: "bonum",
+        name: "Gyre Bonum",
+        packageName: "@mathjax/mathjax-bonum-font",
+        exportName: "MathJaxBonumFont",
+    },
+    {
+        id: "dejavu",
+        name: "Gyre DejaVu",
+        packageName: "@mathjax/mathjax-dejavu-font",
+        exportName: "MathJaxDejavuFont",
     },
     {
         id: "fira",
@@ -23,12 +35,51 @@ const FONTS = [
         packageName: "@mathjax/mathjax-fira-font",
         exportName: "MathJaxFiraFont",
     },
+    {
+        id: "modern",
+        name: "Latin Modern",
+        packageName: "@mathjax/mathjax-modern-font",
+        exportName: "MathJaxModernFont",
+    },
+    {
+        id: "pagella",
+        name: "Gyre Pagella",
+        packageName: "@mathjax/mathjax-pagella-font",
+        exportName: "MathJaxPagellaFont",
+    },
+    {
+        id: "schola",
+        name: "Gyre Schola",
+        packageName: "@mathjax/mathjax-schola-font",
+        exportName: "MathJaxScholaFont",
+    },
+    {
+        id: "stix2",
+        name: "STIX Two",
+        packageName: "@mathjax/mathjax-stix2-font",
+        exportName: "MathJaxStix2Font",
+    },
+    {
+        id: "termes",
+        name: "Gyre Termes",
+        packageName: "@mathjax/mathjax-termes-font",
+        exportName: "MathJaxTermesFont",
+    },
+    {
+        id: "tex",
+        name: "MathJax TeX",
+        packageName: "@mathjax/mathjax-tex-font",
+        exportName: "MathJaxTexFont",
+    },
 ];
 
 async function importDynamicModules(packageName, renderer) {
     const entry = fileURLToPath(import.meta.resolve(`${packageName}/js/${renderer}.js`));
     const directory = join(dirname(entry), renderer, "dynamic");
-    const files = (await readdir(directory))
+    const files = (await readdir(directory).catch((error) => {
+        if (error?.code === "ENOENT") return [];
+        throw error;
+    }))
         .filter((name) => name.endsWith(".js"))
         .sort();
     await Promise.all(files.map((name) => import(new URL(`./${renderer}/dynamic/${name}`, `file:///${entry.replaceAll("\\", "/")}`))));
@@ -94,6 +145,9 @@ async function buildPack(font) {
     };
     const json = Buffer.from(JSON.stringify(pack));
     const compressed = gzipSync(json, { level: 9, mtime: 0 });
+    // zlib writes a platform-specific gzip OS byte (Windows vs Linux), which used to make the
+    // committed manifest disagree with release assets despite identical expanded data.
+    compressed[9] = 255;
     const fileName = `mathjax-font-${font.id}-${FONT_VERSION}.json.gz`;
     await writeFile(join(OUTPUT_DIR, fileName), compressed);
     return {

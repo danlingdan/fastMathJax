@@ -7,8 +7,8 @@ this design.
 ## Problem
 
 CommonHTML output references the selected family's `woff2` glyph files from a CDN. New Computer
-Modern's metrics are bundled; optional STIX Two and Fira Math metrics arrive in a verified data
-pack. Glyph *shapes* still need the webfonts: in airplane mode, CHTML formulas degrade to a system
+Modern's metrics are bundled; metrics for the other 10 official MathJax 4 fonts arrive in a
+verified data pack. Glyph *shapes* still need the webfonts: in airplane mode, CHTML formulas degrade to a system
 fallback face. SVG embeds glyph paths and has no WOFF2 dependency.
 
 ## Goal
@@ -87,13 +87,24 @@ other selected families remain independent.
 
 ## Optional font-data packs
 
-NewCM's CHTML metrics, dynamic ranges and SVG paths remain in `main.js`. STIX Two and Fira Math are
-build-time exports of the corresponding official MathJax 4.1.3 packages:
+NewCM's CHTML metrics, dynamic ranges and SVG paths remain in `main.js`. The other 10 full font
+families are build-time exports of the corresponding official MathJax 4.1.3 packages:
 
 | Pack | Compressed | Expanded |
 | --- | ---: | ---: |
-| STIX Two | 19,301,788 bytes | 61,562,937 bytes |
+| Asana Math | 9,397,722 bytes | 27,453,949 bytes |
+| Gyre Bonum | 8,976,818 bytes | 28,107,262 bytes |
+| Gyre DejaVu | 8,571,391 bytes | 26,621,058 bytes |
 | Fira Math | 12,105,665 bytes | 41,679,663 bytes |
+| Latin Modern | 11,703,569 bytes | 36,502,303 bytes |
+| Gyre Pagella | 10,478,656 bytes | 32,602,661 bytes |
+| Gyre Schola | 11,139,550 bytes | 33,157,561 bytes |
+| STIX Two | 19,301,788 bytes | 61,562,937 bytes |
+| Gyre Termes | 9,198,679 bytes | 28,507,021 bytes |
+| MathJax TeX | 8,189,857 bytes | 21,845,245 bytes |
+
+The ten optional packs total 109,063,695 compressed bytes, but each user downloads only the
+family they select.
 
 The matching GitHub release hosts these `.json.gz` assets. Selecting a family downloads its pack
 once into `font-packs/`. Before parsing, the plugin verifies the exact compressed byte count,
@@ -142,6 +153,6 @@ keep the network footprint polite.
 
 - Automated: cache unit tests (skip-if-present, partial resume, integrity rejection, family/version
   cleanup, resource-path mapping), pack checksum/corruption tests, settings migration, and actual
-  CHTML/SVG rendering from both STIX Two and Fira packs.
+  CHTML/SVG rendering across every optional full-font pack.
 - Desktop (pending for the unreleased font-selection work): select each family in CHTML and SVG,
   verify PDF/popout consistency, then use local WOFF2 mode and repeat after a network-off restart.

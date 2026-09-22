@@ -40,9 +40,9 @@ hover previews and embeds — upgrades to the bundled engine.
   automatic fail-closed fallback to the default mode. *(new in 1.0.0)*
 - **Deterministic PDF export** — an isolated SVG print engine embeds glyph paths, so exports are
   pixel-stable and offline-safe from either editor mode.
-- **Selectable math fonts** — New Computer Modern is built in; STIX Two and Fira Math are
-  downloaded as version-pinned, SHA-256-verified data packs only when selected. Both CHTML and
-  SVG/PDF use the chosen font.
+- **All 11 official MathJax fonts** — New Computer Modern is built in; Asana Math, five Gyre
+  families, Fira Math, Latin Modern, STIX Two and MathJax TeX are downloaded as version-pinned,
+  SHA-256-verified data packs only when selected. Both CHTML and SVG/PDF use the chosen font.
 - **CHTML or SVG output** — CommonHTML uses the selected font's webfonts; SVG embeds glyph paths.
 - **Popout windows** — styled automatically in both modes; popout sheets mirror the engine's
   live stylesheet, and local font URLs are rewritten to the CDN for popout documents.
@@ -61,8 +61,8 @@ hover previews and embeds — upgrades to the bundled engine.
 2. Put all three files under `<vault>/.obsidian/plugins/latest-mathjax/`.
 3. Reload Obsidian and enable **Latest MathJax** under *Settings → Community plugins*.
 
-The optional STIX Two and Fira Math packs are fetched from the matching GitHub release the first
-time they are selected. They are data-only gzip files, not downloaded JavaScript.
+Optional font packs are fetched from the matching GitHub release the first time they are selected.
+They are data-only gzip files, not downloaded JavaScript.
 
 Reading View takeover is on by default; Live Preview takeover and inline-math takeover are
 opt-in switches under *Settings → Latest MathJax → Compatibility*.

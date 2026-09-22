@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.2.0 - 2026-09-22
+
+- Added every remaining MathJax 4.1.3 full font as an optional verified download: Asana Math,
+  Gyre Bonum, Gyre DejaVu, Latin Modern, Gyre Pagella, Gyre Schola, Gyre Termes and MathJax TeX.
+  Together with bundled New Computer Modern, STIX Two and Fira Math, the selector now exposes all
+  11 official full font families without adding their data to the core plugin bundle.
+
 ## 1.1.0 - 2026-09-22
 
 - Added real MathJax font selection for **New Computer Modern**, **STIX Two**, and **Fira Math**.

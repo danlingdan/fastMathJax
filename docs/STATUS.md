@@ -1,7 +1,23 @@
 # Project status
 
-Latest published version: `1.1.0`, with downloadable STIX Two and Fira Math support described
-below. The plugin remains desktop-only until a separate mobile acceptance pass.
+Latest published version: `1.2.0`, extending the verified-download architecture to all 11
+official MathJax 4 full font families. The plugin remains desktop-only until a separate mobile
+acceptance pass.
+
+## 1.2.0 — complete official font set (released 2026-09-22)
+
+New Computer Modern remains bundled. The optional list now includes Asana Math, Gyre Bonum,
+Gyre DejaVu, Fira Math, Latin Modern, Gyre Pagella, Gyre Schola, STIX Two, Gyre Termes and
+MathJax TeX. Every family uses the same non-executable data-pack generation, size/hash/schema
+validation, family-specific WOFF2 cache and CHTML/SVG engine path introduced in 1.1.0.
+
+Release gates passed with 199 tests across 29 files, lint, typecheck, production build, release
+metadata validation, `npm audit --omit=dev` (0 vulnerabilities), and `git diff --check`. A bounded
+desktop smoke pass on Obsidian 1.13.7 verified all 11 choices in the settings UI, Asana Math in
+CHTML, MathJax TeX in SVG, the complete render-test matrix in both configurations (0 unexpected
+failures), and representative Live Preview and Reading View output. The full cross-product of all
+fonts and every supported surface remains covered primarily by the automated matrix rather than a
+manual desktop pass.
 
 ## 1.1.0 — downloadable math-font packs
 
@@ -261,7 +277,7 @@ Release: tag `0.3.0` built and published by GitHub Actions with provenance attes
 ## Completed
 
 - Isolated MathJax `4.1.3` engine; Obsidian's global MathJax is never replaced or patched.
-- CommonHTML and SVG output using bundled NewCM or verified optional STIX Two/Fira data packs.
+- CommonHTML and SVG output using bundled NewCM or any verified optional official font data pack.
 - Reading View display and inline rendering.
 - Live Preview display and inline rendering using Obsidian's mounted math widgets and CodeMirror document positions.
 - Deterministic PDF export from either editor mode using an isolated SVG print renderer.
@@ -315,7 +331,7 @@ Install these three core generated files under `.obsidian/plugins/latest-mathjax
 - `manifest.json`
 - `styles.css`
 
-GitHub releases additionally contain the optional, attested STIX Two and Fira data packs; the
-plugin downloads them on selection. `main.js` remains about 12.2 MB because all CommonHTML and SVG
+GitHub releases additionally contain the optional, attested full-font data packs; the plugin
+downloads one on selection. `main.js` remains about 12.2 MB because all CommonHTML and SVG
 NewCM glyph chunks are bundled. SVG needs no WOFF2; CommonHTML loads the selected family's webfonts
 from jsDelivr by default or its family/version local cache. Run `npm run check` before distribution.

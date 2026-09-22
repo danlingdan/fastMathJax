@@ -4,7 +4,8 @@ import { gunzipSync } from "node:zlib";
 import { FONT_PACK_MANIFEST } from "./fontPackManifest.generated";
 import type { DownloadedFontPack } from "./PackedFont";
 
-export type FontFamily = "newcm" | "stix2" | "fira";
+type DownloadedFontFamily = typeof FONT_PACK_MANIFEST[number]["id"];
+export type FontFamily = "newcm" | DownloadedFontFamily;
 
 export interface FontPackAdapter {
     mkdir(normalizedPath: string): Promise<void>;
@@ -29,6 +30,12 @@ export const FONT_FAMILIES = [
     { id: "newcm", name: "New Computer Modern", bundled: true },
     ...FONT_PACK_MANIFEST.map((entry) => ({ id: entry.id, name: entry.name, bundled: false })),
 ] as const;
+
+const fontFamilyIds = new Set<string>(FONT_FAMILIES.map((font) => font.id));
+
+export function isFontFamily(value: unknown): value is FontFamily {
+    return typeof value === "string" && fontFamilyIds.has(value);
+}
 
 export class FontPackManager {
     private readonly loaded = new Map<FontFamily, DownloadedFontPack>();
@@ -73,7 +80,7 @@ export class FontPackManager {
         return task;
     }
 
-    private async ensurePack(family: Exclude<FontFamily, "newcm">): Promise<DownloadedFontPack> {
+    private async ensurePack(family: DownloadedFontFamily): Promise<DownloadedFontPack> {
         const cached = await this.loadCached(family).catch(() => null);
         if (cached) return cached;
         const entry = manifest.get(family);
@@ -91,7 +98,7 @@ export class FontPackManager {
         return pack;
     }
 
-    private decode(compressed: ArrayBuffer, family: Exclude<FontFamily, "newcm">): DownloadedFontPack {
+    private decode(compressed: ArrayBuffer, family: DownloadedFontFamily): DownloadedFontPack {
         const entry = manifest.get(family);
         if (!entry) throw new Error(`unsupported font family: ${family}`);
         const bytes = new Uint8Array(compressed);

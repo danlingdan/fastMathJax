@@ -44,7 +44,7 @@ Obsidian 1.8–1.12 continues to use the equivalent imperative settings tab, so 
 modernization does not raise `minAppVersion`.
 
 CommonHTML uses the selected family's webfonts from jsDelivr by default; its metrics come from the
-built-in NewCM data or the verified STIX Two/Fira data pack, but the configured WOFF2 files must be
+built-in NewCM data or the selected verified optional font pack, but the configured WOFF2 files must be
 reachable for the intended glyph shapes. SVG embeds glyph paths and needs no WOFF2 download, though
 an optional family still needs its one-time data-pack download. Popout mirrors rewrite local WOFF2
 URLs to the selected family's pinned CDN root.
