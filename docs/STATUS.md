@@ -19,6 +19,11 @@ failures), and representative Live Preview and Reading View output. The full cro
 fonts and every supported surface remains covered primarily by the automated matrix rather than a
 manual desktop pass.
 
+Release: tag `1.2.0` points to commit `0ec4802`. CI run `35723056528` and release run
+`35723069408` completed successfully. The GitHub release contains the three core plugin files and
+all ten optional font packs; all 13 downloaded assets matched their declared SHA-256 digests and
+passed GitHub build-provenance verification.
+
 ## 1.1.0 — downloadable math-font packs
 
 The **Math font** setting now selects New Computer Modern, STIX Two or Fira Math. NewCM remains in

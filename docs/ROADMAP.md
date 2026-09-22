@@ -127,7 +127,7 @@ criteria for a future release. The packaging decision rule below still applies t
 | FONT-03 | P1 | Real font-family selection | L | ✅ Delivered for 1.2.0: all 11 official MathJax 4 full fonts drive both CHTML and SVG/PDF from matching MathJax data; the automated all-font render matrix and representative CHTML/SVG desktop smoke pass |
 | SIZE-04 | P0 | Keep optional font data out of `main.js` | M | ✅ Optional font data stays in non-executable gzip packs; the complete font-selection plus Chinese-localization candidate adds 30,411 bytes to the core bundle, and optional assets are size/hash attested |
 | SEC-02 | P0 | Verify downloaded font packs before use | M | ✅ Exact compressed and expanded sizes, SHA-256, schema, family and font version are checked before parsing; corrupt cache is removed; remote JavaScript is never executed |
-| REL-04 | P0 | Publish and attest optional pack assets | S | ◐ Release workflow and local validation updated; requires a tagged release and remote asset verification |
+| REL-04 | P0 | Publish and attest optional pack assets | S | ✅ Tag `1.2.0` published three core files plus all ten optional packs; all 13 remote assets matched their declared SHA-256 digests and passed GitHub build-provenance verification |
 
 Also carried: MOB-01 device pass (see `docs/mobile-spike.md`; closes MOB-02's conditional), and
 PKG-01 (`bussproofs` evaluation, 0.2.0 backlog).
