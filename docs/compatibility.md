@@ -3,7 +3,7 @@
 | Surface | Default mode (0.x behavior) | Invasive mode (1.0, opt-in) | Behavior |
 | --- | --- | --- | --- |
 | Reading View | Supported | Supported | Default: re-renders inline and display math from exact section source. Invasive: Obsidian's native pipeline renders through the patched entry point, no per-section takeover needed |
-| Live Preview | Supported (opt-in) | Supported | Default: re-renders mounted Obsidian math widgets. Invasive: the native widget path renders through the patched entry point |
+| Live Preview | Supported (default) | Supported | Default: re-renders mounted Obsidian math widgets. Invasive: the native widget path renders through the patched entry point |
 | Popout windows | Supported | Supported | Both modes mirror the engine's live stylesheet (CSSOM kept in sync with the element text) into each popout document; local font URLs are rewritten to the CDN there because popout documents live at a null origin and cannot fetch `app://` resources |
 | PDF export | Supported | Supported | Private SVG engine with embedded glyphs, routed from either editor mode; invasive `.print` detection sends export re-renders to the same engine |
 | Hover preview | Not supported | **Supported** | Default-mode analysis (COMP-02, 0.4.0) still holds for the public API. Invasive mode covers the popover automatically because it renders through the same patched native entry points |

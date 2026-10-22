@@ -67,6 +67,8 @@ export function createReadingViewProcessor(
             blockNodes = blockNodes.filter((node) => settled.has(node));
             inlineNodes = inlineNodes.filter((node) => settled.has(node));
             if (blockNodes.length === 0 && inlineNodes.length === 0) {
+                plugin.lastReadingViewSkip =
+                    "math wrappers did not settle (no is-loaded class) — built-in output kept";
                 logger.debug("Reading View: math not settled, leaving Obsidian output in place");
                 return;
             }
@@ -74,6 +76,7 @@ export function createReadingViewProcessor(
 
         const sourceText = await sourceForElement(plugin, element, context, pdfExport);
         if (sourceText === null) {
+            plugin.lastReadingViewSkip = "no section info for this element — built-in output kept";
             logger.debug("Reading View: no section info, leaving Obsidian output in place");
             return;
         }
@@ -81,6 +84,7 @@ export function createReadingViewProcessor(
         // section meanwhile, detaching everything this run captured. A stale run mounts output
         // nobody will ever see, so it stops here (PERF-03).
         if (!sectionIsCurrent(element)) {
+            plugin.lastReadingViewSkip = "section replaced mid-run — stale render skipped";
             logger.debug("Reading View: section replaced mid-run; skipping stale render");
             return;
         }
@@ -316,6 +320,9 @@ async function rerender(
     // A mismatch means Obsidian and our conservative scanner disagree (currency-like dollars are
     // the common case). Index pairing would move later TeX into the wrong wrapper, so fail closed.
     if (nodes.length !== texList.length) {
+        plugin.lastReadingViewSkip =
+            `${display ? "block" : "inline"} count mismatch: ${nodes.length} wrappers vs ` +
+            `${texList.length} sources — built-in output kept`;
         logger.debug(
             `Reading View: ${display ? "block" : "inline"} count mismatch ` +
             `(${nodes.length} wrappers, ${texList.length} sources), leaving built-in output`,

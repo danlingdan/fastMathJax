@@ -292,7 +292,7 @@ Release: tag `0.3.0` built and published by GitHub Actions with provenance attes
 - Revision-aware Live Preview teardown that cannot overwrite output mounted by a newer renderer.
 - Version inspector, render test view and release metadata validation.
 
-Hover Preview and Canvas remain explicitly unsupported because those surfaces do not expose a reliable public raw-TeX hook. Their settings are disabled and labelled as planned; they are not part of the initial release scope. Reading View is enabled by default; Live Preview is supported but opt-in on a fresh install.
+Hover Preview and Canvas remain explicitly unsupported because those surfaces do not expose a reliable public raw-TeX hook. Their settings are disabled and labelled as planned; they are not part of the initial release scope. Reading View and Live Preview (display and inline) are enabled by default since 1.3.0.
 
 ## Verification (2026-08-24 release)
 

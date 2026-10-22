@@ -30,8 +30,8 @@ simulator; `tests/manifest.test.ts` guards that rule.
   Missing font files degrade glyph *shapes* only (metrics are bundled), but the cold per-viewport
   penalty above shows glyph chunk loads already dominate on desktop. **SVG needs no font download**
   and is the safer mobile default (`docs/roadmap.md` FONT-02).
-- **Touch editing** goes through the same CodeMirror 6 Live Preview path as desktop; the opt-in
-  Live Preview settings default to off, matching desktop behavior. Nothing in the plugin's
+- **Touch editing** goes through the same CodeMirror 6 Live Preview path as desktop; the Live
+  Preview settings default to on since 1.3.0, matching desktop behavior. Nothing in the plugin's
   scheduling is pointer-specific, but virtualized scrolling + debounce behavior under touch needs
   direct observation.
 

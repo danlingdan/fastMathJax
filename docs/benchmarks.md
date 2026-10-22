@@ -45,7 +45,8 @@ those formulas to Obsidian's failure fallback without disturbing neighbors.
    `benchmark-preamble.tex` into it.
 2. Install the plugin build under `.obsidian/plugins/latest-mathjax/`, enable it, and set the
    **Preamble file** setting to the vault path of `benchmark-preamble.tex`. Keep every other
-   setting at its default (enable opt-in Live Preview only when measuring it).
+   setting at its default (Live Preview takeover is on by default since 1.3.0; turn it off when
+   measuring the Reading-View-only path).
 3. Sanity-check before recording: the macros section must render (e.g. `\benchQuad{x_{1}}`
    becomes a quadratic, `\benchSpeedOfLight` becomes `299 792 458 m/s`), and the invalid section
    must fall back without affecting neighbors. Raw TeX in the macros section means the preamble

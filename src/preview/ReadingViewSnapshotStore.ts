@@ -8,6 +8,11 @@
 export class ReadingViewSnapshotStore {
     private readonly originals = new Map<HTMLElement, Node[]>();
 
+    /** How many wrappers currently hold a saved Obsidian original (diagnostics). */
+    get size(): number {
+        return this.originals.size;
+    }
+
     replace(wrapper: HTMLElement, replacement: Node): void {
         this.pruneDisconnected();
         if (!this.originals.has(wrapper)) {

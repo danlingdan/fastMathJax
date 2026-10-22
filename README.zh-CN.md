@@ -45,7 +45,7 @@ Obsidian 自带的 MathJax 通常落后于上游版本。新 TeX 宏包、字体
 2. 将三个文件放入 `<你的库>/.obsidian/plugins/latest-mathjax/`。
 3. 重新加载 Obsidian，在“设置 → 第三方插件”中启用 **Latest MathJax**。
 
-阅读视图默认启用；实时预览和行内公式接管默认关闭，可在“设置 → Latest MathJax → 兼容性”中启用。
+阅读视图与实时预览（块级与行内）默认全部启用；各渲染面可在“设置 → Latest MathJax → 兼容性”里单独关闭。
 
 ## 字体与离线使用
 

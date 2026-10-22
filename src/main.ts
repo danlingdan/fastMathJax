@@ -90,6 +90,12 @@ export default class LatestMathJaxPlugin extends Plugin {
     private bridge: NativeMathBridge | null = null;
     /** True while Obsidian's native render entry points are patched (invasive mode live). */
     invasiveActive = false;
+    /**
+     * Why the last Reading-View pass left Obsidian's own output in place. Surfaced by the
+     * diagnostics command: a skip here is the difference between "the plugin rendered it" and
+     * "Obsidian's built-in MathJax rendered it" (which looks like a plugin bug in the note).
+     */
+    lastReadingViewSkip: string | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -157,6 +163,12 @@ export default class LatestMathJaxPlugin extends Plugin {
             id: "show-version-info",
             name: "Show MathJax version info",
             callback: () => void this.showVersionInfo(),
+        });
+
+        this.addCommand({
+            id: "show-render-diagnostics",
+            name: "Show math render diagnostics",
+            callback: () => this.showRenderDiagnostics(),
         });
 
         this.addCommand({
@@ -942,6 +954,66 @@ export default class LatestMathJaxPlugin extends Plugin {
                 : "Bundled engine is at least as new as the built-in one.",
         ];
         new Notice(lines.join("\n"), 8000);
+    }
+
+    /**
+     * A one-shot report for "the note shows the wrong renderer" reports.
+     *
+     * Reading-View takeover fails closed: when the plugin cannot pair wrappers with source it
+     * leaves Obsidian's built-in MathJax output in place, which then looks like a plugin bug
+     * (unknown macros render red). This prints what the engine was configured with and how many
+     * wrappers the last pass actually replaced, plus the reason a pass bailed out.
+     */
+    private showRenderDiagnostics(): void {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        const root: HTMLElement | Document = view?.containerEl ?? document;
+        const count = (selector: string) => root.querySelectorAll(selector).length;
+        const lines = [
+            `plugin ${this.manifest.version} · bundled MathJax ${this.engine.version} · ` +
+                `built-in ${this.versionReport?.builtIn ?? "not detected"}`,
+            `active view: ${view ? `${view.getMode?.() ?? "?"} mode` : "none"}`,
+            `renderer ${this.settings.renderer} · font ${this.effectiveFontFamily()} · ` +
+                `source ${this.settings.fontSource} · fallback ${this.settings.fallbackMode}`,
+            `invasive ${this.invasiveActive} · reading view ${this.settings.enableReadingView} · ` +
+                `inline reading ${this.settings.enableInlineReadingView} · ` +
+                `live preview ${this.settings.enableLivePreview} · ` +
+                `inline live preview ${this.settings.enableInlineLivePreview}`,
+            `packages: ${this.settings.packages.join(", ")}`,
+            `wrappers: block ${count(".math.math-block")} · settled ${count(".math.is-loaded")} · ` +
+                `inline ${count(".math.math-inline")}`,
+            `ours: handled ${count("[data-latest-mathjax]")} · ` +
+                `engine output ${count("[data-latest-mathjax-engine]")} · ` +
+                `snapshots ${this.readingViewSnapshots.size}`,
+            `engine self-check: ${this.engineSelfCheck()}`,
+            `last Reading-View skip: ${this.lastReadingViewSkip ?? "none"}`,
+        ];
+        logger.warn(lines.join("\n"));
+        new Notice(lines.join("\n"), 20000);
+    }
+
+    /**
+     * Renders a few optional-package formulas directly with the engine, bypassing every surface
+     * adapter. Separates "the engine was built without the packages" (a settings/build problem)
+     * from "the surface never asked the engine" (a view/takeover problem).
+     */
+    private engineSelfCheck(): string {
+        const probes: Array<[string, string]> = [
+            ["\\dv", String.raw`\dv{f}{x}`],
+            ["\\abs", String.raw`\abs{x}`],
+            ["\\coloneqq", String.raw`a \coloneqq b`],
+            ["\\braket", String.raw`\braket{0}{1}`],
+        ];
+        const results: string[] = [];
+        for (const [label, tex] of probes) {
+            try {
+                const node = this.engine.render(tex, { display: false });
+                const error = /data-mjx-error="([^"]*)"/.exec(node.outerHTML)?.[1];
+                results.push(error ? `${label} ERROR` : `${label} ok`);
+            } catch (error) {
+                results.push(`${label} THROW ${(error as Error).message.slice(0, 40)}`);
+            }
+        }
+        return results.join(" · ");
     }
 
     // -------------------------------------------------------------------- view

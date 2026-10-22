@@ -64,8 +64,8 @@ hover previews and embeds — upgrades to the bundled engine.
 Optional font packs are fetched from the matching GitHub release the first time they are selected.
 They are data-only gzip files, not downloaded JavaScript.
 
-Reading View takeover is on by default; Live Preview takeover and inline-math takeover are
-opt-in switches under *Settings → Latest MathJax → Compatibility*.
+Reading View and Live Preview takeover (display and inline) are on by default; each surface can be
+switched off under *Settings → Latest MathJax → Compatibility*.
 
 ## Preamble files in your vault
 
@@ -91,8 +91,8 @@ exactly as before 0.2.0.
 
 | Surface | Default mode | Invasive mode | Notes |
 | --- | --- | --- | --- |
-| Reading View | ✅ | ✅ | display + inline (inline opt-in in default mode) |
-| Live Preview | ✅ | ✅ | public editor widgets (opt-in in default mode) |
+| Reading View | ✅ | ✅ | display + inline (both on by default) |
+| Live Preview | ✅ | ✅ | public editor widgets (display + inline on by default) |
 | Popout windows | ✅ | ✅ | per-document stylesheet mirroring |
 | PDF export | ✅ | ✅ | isolated SVG engine, deterministic output |
 | Hover preview | ❌ | ✅ | invasive mode covers Obsidian's own popover path automatically |

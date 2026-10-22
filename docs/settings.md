@@ -26,9 +26,9 @@ locales retain English. Language selection is UI-only and does not add a persist
 | `cacheSize` | 0 – 10 000 (int) | 1000 | 0.1.0 | LRU entries |
 | `renderDebounce` | 0 – 2000 (ms, int) | 150 | 0.1.0 | Live Preview debounce |
 | `enableReadingView` | boolean | `true` | 0.1.0 | Invasive mode supersedes (gate stays off) |
-| `enableInlineReadingView` | boolean | `false` | 0.2.0 | |
-| `enableLivePreview` | boolean | `false` | 0.1.0 | |
-| `enableInlineLivePreview` | boolean | `false` | 0.2.0 | |
+| `enableInlineReadingView` | boolean | `true` | 0.2.0 | Inline takeover in Reading View |
+| `enableLivePreview` | boolean | `true` | 0.1.0 | Display takeover in the editor |
+| `enableInlineLivePreview` | boolean | `true` | 0.2.0 | Inline takeover in the editor |
 | `enableHoverPreview` | boolean | `false` | 0.4.0 | Reserved; hover takeover needs invasive mode (see `docs/compatibility.md`) |
 | `enableCanvas` | boolean | `false` | 0.4.0 | Reserved; no render hook exists (COMP-02) |
 | `enablePopout` | boolean | `true` | 0.1.0 | Style mirroring into popout documents |
