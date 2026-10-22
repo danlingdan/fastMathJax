@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -7,7 +7,6 @@ import { gzipSync } from "node:zlib";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const OUTPUT_DIR = join(ROOT, "font-packs");
 const GENERATED_MANIFEST = join(ROOT, "src", "fonts", "fontPackManifest.generated.ts");
-const FONT_VERSION = "4.1.3";
 const SCHEMA_VERSION = 1;
 
 const FONTS = [
@@ -73,16 +72,44 @@ const FONTS = [
     },
 ];
 
+const FONT_VERSION = await resolveFontVersion(FONTS);
+
 async function importDynamicModules(packageName, renderer) {
     const entry = fileURLToPath(import.meta.resolve(`${packageName}/js/${renderer}.js`));
     const directory = join(dirname(entry), renderer, "dynamic");
     const files = (await readdir(directory).catch((error) => {
-        if (error?.code === "ENOENT") return [];
-        throw error;
+        if (error?.code !== "ENOENT") throw error;
+        // `mathjax-tex-font` genuinely ships no dynamic glyph modules; every other family does.
+        // Report instead of silently packaging a sparser font than the family provides.
+        console.warn(`generate-font-packs: ${packageName} has no ${renderer} dynamic modules`);
+        return [];
     }))
         .filter((name) => name.endsWith(".js"))
         .sort();
     await Promise.all(files.map((name) => import(new URL(`./${renderer}/dynamic/${name}`, `file:///${entry.replaceAll("\\", "/")}`))));
+}
+
+/**
+ * The font-data version the packs are generated from, read from the installed packages.
+ *
+ * Kept out of a literal so a dependency bump cannot leave the manifest claiming an older version
+ * while the payload (and every checksum) already moved. Mismatched families fail loudly: mixing
+ * 4.1.3 and 4.1.4 glyph tables in one release would produce wrong metrics at runtime.
+ */
+async function resolveFontVersion(fonts) {
+    const versions = new Map();
+    for (const font of fonts) {
+        const path = join(ROOT, "node_modules", font.packageName, "package.json");
+        versions.set(font.id, JSON.parse(await readFile(path, "utf8")).version);
+    }
+    const distinct = new Set(versions.values());
+    if (distinct.size !== 1) {
+        throw new Error(
+            "generate-font-packs: the installed MathJax font packages disagree on version: " +
+                [...versions].map(([id, version]) => `${id}@${version}`).join(", "),
+        );
+    }
+    return [...distinct][0];
 }
 
 function plainVariant(variant) {
