@@ -55,15 +55,18 @@ SVG never fetches fonts (pinned by `tests/MathJaxEngine.test.ts`, FONT-02).
 ### Download set and source
 
 - The set of files to have locally is derived from the engine's current stylesheet: every
-  `url(...)` target's basename in the emitted `@font-face` rules. Deriving from the stylesheet
-  (instead of a hardcoded list) keeps the cache definition in sync with the bundled font data for
-  any font version.
+  `url(...)` target's basename in the emitted `@font-face` rules, restricted to `.woff2`. Deriving
+  from the stylesheet (instead of a hardcoded list) keeps the cache definition in sync with the
+  bundled font data for any font version. The `.woff2` filter matters: the SVG renderer embeds its
+  zero-width face as a `data:` URI, which is not a downloadable file.
 - Files are fetched **only** from the selected family's pinned source root
   `https://cdn.jsdelivr.net/npm/@mathjax/mathjax-<family>-font@<font-version>/chtml/woff2`. A
   user-configured `fontURL` is never used as a download source — that is the trust boundary
   (sec-review SEC-01, deferred, must not be silently widened by this feature).
 - The "Download fonts" command re-derives the set and fills gaps, so a cache from an interrupted
-  run converges without a restart.
+  run converges without a restart. It also re-probes names an earlier run recorded as unavailable,
+  so a transient 404 (captive portal, proxy error page, CDN rate limit) cannot disable a face for
+  the lifetime of the cache.
 
 ### Download integrity
 
@@ -72,12 +75,32 @@ bytes are the `wOF2` magic. Accepted files are written with `adapter.writeBinary
 `manifest.json` with their byte length. Anything else is discarded and reported; partial caches
 are resumable (the manifest lists exactly which files completed).
 
+A 404 is different from a transient failure: MathJax 4.1.3's NewCM stylesheet references five
+variant faces (`dvb`, `dvi`, `dvbi`, `abb`, `abbi`) that were never published, so a 404 is recorded
+in the manifest as `-1` and skipped on later runs rather than failing the whole cache. An explicit
+retry clears those markers (see above). A run in which *every* name fails reports `ok: false`
+instead of pointing the engine at a directory with no glyph files.
+
+Cached files are re-verified against the manifest's byte lengths through `adapter.stat()` before
+they are trusted: a truncated file (interrupted write, sync placeholder, external cleanup) is
+downloaded again, because the browser rejects the whole face and the math renders with clipped
+fallback glyphs — the same symptom as a malformed font URL. Verification is rate-limited to once
+per 30 s per cache instance, and a repair re-emits the `@font-face` sheet so the fix applies
+without a restart.
+
+Concurrent requests share one run (`LocalFontCache.ensureFiles()` single-flight), so the settings
+funnel, the command and a completion callback cannot download the same files twice or overwrite
+each other's manifest snapshot.
+
 ### Serving
 
 The cache directory is served with `adapter.getResourcePath(...)` (Obsidian's `app://` protocol),
-and the engine's `fontURL` is pointed at that path. The existing engine pipeline already
-re-emits `@font-face` rules when `fontURL` changes (same path as the custom-URL feature), so no
-engine-internal changes are needed.
+and the engine's `fontURL` is pointed at that path. Because the engine appends `/<file>.woff2` to
+this base by plain concatenation, the URL is normalized with `asDirectoryBase()`
+(`src/utils/resourceUrl.ts`) first: hosts that append a cache-busting query or fragment would
+otherwise push the file name into the query and every glyph request would fail. The existing
+engine pipeline already re-emits `@font-face` rules when `fontURL` changes (same path as the
+custom-URL feature), so no engine-internal changes are needed.
 
 ### Upgrades and cleanup
 

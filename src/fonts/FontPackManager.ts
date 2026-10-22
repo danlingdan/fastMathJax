@@ -59,11 +59,16 @@ export class FontPackManager {
         if (!entry) throw new Error(`unsupported font family: ${family}`);
         const path = this.packPath(entry.fileName);
         if (!(await this.deps.adapter.exists(path))) return null;
+        // A read failure is transient (sync placeholder, locked file); deleting the pack over it
+        // throws away a multi-megabyte download that would succeed on the next read.
+        const bytes = await this.deps.adapter.readBinary(path).catch(() => null);
+        if (!bytes) throw new Error(`font pack ${family} is unreadable`);
         try {
-            const pack = this.decode(await this.deps.adapter.readBinary(path), family);
+            const pack = this.decode(bytes, family);
             this.loaded.set(family, pack);
             return pack;
         } catch (error) {
+            // Corrupt content is different: drop it so the next `ensure()` downloads a fresh copy.
             await this.deps.adapter.remove(path).catch(() => undefined);
             throw error;
         }
