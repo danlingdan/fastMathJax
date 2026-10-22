@@ -7,6 +7,7 @@ import {
 } from "./engine/MathJaxConfig";
 import { isFontFamily, type FontFamily } from "./fonts/FontPackManager";
 import { buildPreambleSegments, mergePreambles } from "./preamble/preambleModel";
+import { asDirectoryBase } from "./utils/resourceUrl";
 
 export type FallbackMode = "raw" | "obsidian" | "error";
 
@@ -178,7 +179,9 @@ export function toEngineConfig(
             : {}),
         fontSize: settings.fontSize,
         scale: settings.scale,
-        fontURL: settings.fontURL,
+        // MathJax appends "/<file>.woff2" to this base, so a query or fragment that a user
+        // pasted from a cache-busted CDN URL would swallow the file name (#2, CDN side).
+        fontURL: asDirectoryBase(settings.fontURL.trim()),
         enableAssistiveMml: settings.enableAssistiveMml,
         // Invasive mode is the only MathJax vocabulary on the page, so the coexistence tag
         // renaming is disabled and MathJax's own `mjx-*` output ships untouched.

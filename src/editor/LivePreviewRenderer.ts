@@ -101,6 +101,11 @@ export class LivePreviewRenderer {
 
                 private renderMountedMath(): void {
                     const targetDocument = this.view.dom.ownerDocument;
+                    // Record the revision even when this pass deliberately does nothing:
+                    // otherwise `update()` re-arms a timer on every keystroke and selection
+                    // change while invasive mode or Live Preview is switched off.
+                    const revision = plugin.engine.revision;
+                    this.lastRevision = revision;
                     if (
                         // Invasive mode: the editor's own widgets render through the patched
                         // native entry point; taking over their output would only redo the work.
@@ -110,8 +115,6 @@ export class LivePreviewRenderer {
                     ) return;
 
                     const ranges = findMathRanges(this.view.state.doc.toString());
-                    const revision = plugin.engine.revision;
-                    this.lastRevision = revision;
 
                     for (const wrapper of Array.from(
                         this.view.dom.querySelectorAll<HTMLElement>(".math"),

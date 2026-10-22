@@ -76,3 +76,14 @@ export function releaseSheet(doc: Document, marker: string): void {
 export function findAdoptedSheet(doc: Document, marker: string): CSSStyleSheet | null {
     return sheetsOf(doc).find((sheet) => isMarked(sheet, marker)) ?? null;
 }
+
+/**
+ * True while `sheet` is still part of the document's adopted set.
+ *
+ * A cached sheet reference can outlive its adoption: another engine instance sharing the same
+ * marker releases the sheet on teardown, and writes into the detached sheet would then be
+ * invisible — the exact failure mode that leaves CHTML glyphs without their webfonts.
+ */
+export function isAdoptedSheet(doc: Document, sheet: CSSStyleSheet): boolean {
+    return sheetsOf(doc).includes(sheet);
+}

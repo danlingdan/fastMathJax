@@ -24,16 +24,20 @@ export async function waitForSettledMath(nodes: HTMLElement[]): Promise<HTMLElem
     if (pending.length === 0) return nodes;
 
     await new Promise<void>((resolve) => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
         const observer = new MutationObserver(() => {
             if (pending.every((node) => node.classList.contains(MATH_LOADED_CLASS))) {
                 observer.disconnect();
+                // Leaving the 5s guard armed after settling keeps a timer and its closures alive
+                // for every pass over a note with not-yet-finalized math.
+                if (timer !== null) clearTimeout(timer);
                 resolve();
             }
         });
         for (const node of pending) {
             observer.observe(node, { attributes: true, attributeFilter: ["class"] });
         }
-        setTimeout(() => {
+        timer = setTimeout(() => {
             observer.disconnect();
             resolve();
         }, MATH_LOAD_TIMEOUT_MS);

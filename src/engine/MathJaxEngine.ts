@@ -10,7 +10,7 @@ import { AssistiveMmlHandler } from "@mathjax/src/js/a11y/assistive-mml.js";
 import type { MathDocument } from "@mathjax/src/js/core/MathDocument.js";
 
 import { MathCache, type CacheStats } from "./MathCache";
-import { adoptSheet, releaseSheet, setSheetCss, FONT_FACE_SHEET_MARKER } from "./adoptedSheet";
+import { adoptSheet, isAdoptedSheet, releaseSheet, setSheetCss, FONT_FACE_SHEET_MARKER } from "./adoptedSheet";
 import { isolateOutput, isolateStyles } from "./outputIsolation";
 import {
     type EngineConfig,
@@ -161,6 +161,10 @@ export class MathJaxEngine {
     private fontFaceCss = "";
     private readonly styleElementId = `${STYLE_ELEMENT_ID}-${++engineSequence}`;
     private readonly fontFaceElementId = `${FONT_FACE_ELEMENT_ID}-${engineSequence}`;
+    /** Documents that received a stylesheet mirror; the copies are dropped on teardown. */
+    private readonly mirroredDocuments = new Set<Document>();
+    /** True once the plugin owning this engine is gone; renders then fail instead of rebuilding. */
+    private disposed = false;
     /** Unique CSS scope so simultaneous engines with different fonts cannot share metrics. */
     readonly styleScope = `s${engineSequence}`;
     /** Element id carrying this instance's adaptive glyph rules (exposed for tests). */
@@ -209,7 +213,7 @@ export class MathJaxEngine {
     }
 
     initialise(): void {
-        if (this.doc) return;
+        if (this.disposed || this.doc) return;
         ensureHandler();
         this.build();
     }
@@ -348,6 +352,10 @@ export class MathJaxEngine {
      * @throws MathRenderError
      */
     render(tex: string, options: RenderOptions): HTMLElement {
+        // A disposed engine must stay dead: `initialise()` would otherwise rebuild it on the next
+        // render (a Reading-View pass that resumes after the plugin was disabled), injecting a
+        // stylesheet and an adopted font-face sheet that nothing will ever clean up.
+        if (this.disposed) throw new MathRenderError("engine disposed", tex, options.display);
         if (!this.doc) this.initialise();
         if (!this.doc) throw new MathRenderError("engine not initialised", tex, options.display);
 
@@ -393,6 +401,7 @@ export class MathJaxEngine {
      * cannot: dynamically loaded font chunks and future `\require{...}` support.
      */
     async renderAsync(tex: string, options: RenderOptions): Promise<HTMLElement> {
+        if (this.disposed) throw new MathRenderError("engine disposed", tex, options.display);
         if (!this.doc) this.initialise();
         if (!this.doc) throw new MathRenderError("engine not initialised", tex, options.display);
 
@@ -421,6 +430,7 @@ export class MathJaxEngine {
      * @returns true if the engine was rebuilt (callers should re-render open views).
      */
     updateConfig(next: EngineConfig): boolean {
+        if (this.disposed) return false;
         const previous = this.config;
         this.config = next;
 
@@ -603,8 +613,13 @@ export class MathJaxEngine {
         }
         if (this.fontFaceRules.size === 0) return;
         if (!changed && this.fontFaceSheet && this.fontFaceCss) {
-            this.triggerFontLoads(document);
-            return;
+            // Another engine instance (the private PDF engine) may have released the shared
+            // sheet on its own teardown; re-adopt instead of writing into a detached sheet.
+            if (isAdoptedSheet(document, this.fontFaceSheet)) {
+                this.triggerFontLoads(document);
+                return;
+            }
+            this.fontFaceSheet = null;
         }
         this.fontFaceCss = [...this.fontFaceRules.values()].join("\n");
         if (!this.fontFaceSheet) {
@@ -662,6 +677,20 @@ export class MathJaxEngine {
     }
 
     /**
+     * Re-emits the merged `@font-face` sheet from the live stylesheet.
+     *
+     * Called after the local font cache repaired files on disk: those faces already reported
+     * `error`, and neither the font URL nor the rule text changes afterwards, so the normal flush
+     * path would skip the write and the missing glyphs would survive until a restart.
+     */
+    refreshFontFaces(): void {
+        if (this.disposed) return;
+        this.fontFaceRules.clear();
+        this.fontFaceCss = "";
+        this.flushStyles();
+    }
+
+    /**
      * Ensures the engine's CHTML stylesheet is present in `targetDoc`.
      * The canonical stylesheet lives in the host window's `document`. A popout window is a *separate*
      * Document, so formulas rendered there would be unstyled without a local copy. Adapters call this
@@ -703,6 +732,7 @@ export class MathJaxEngine {
             }
             faces.textContent = this.mirrorCss(this.fontFaceCss);
         }
+        this.mirroredDocuments.add(targetDoc);
         this.triggerFontLoads(targetDoc);
     }
 
@@ -739,6 +769,13 @@ export class MathJaxEngine {
         }
         this.styleNode?.remove();
         this.styleNode = null;
+        // Popout mirrors and print-window copies are separate documents; remove the copies this
+        // engine created there too, so no plugin CSS survives a disable or a rebuild.
+        for (const doc of this.mirroredDocuments) {
+            doc.getElementById(this.styleElementId)?.remove();
+            doc.getElementById(this.fontFaceElementId)?.remove();
+        }
+        this.mirroredDocuments.clear();
         this.serializedRuleCount = -1;
         releaseSheet(document, FONT_FACE_SHEET_MARKER);
         this.fontFaceSheet = null;
@@ -757,6 +794,8 @@ export class MathJaxEngine {
 
     /** Removes every trace of the engine from the document. Called on plugin unload. */
     dispose(): void {
+        if (this.disposed) return;
+        this.disposed = true;
         this.teardownDocument();
         this.cache.clear();
         logger.debug("engine disposed");

@@ -42,6 +42,8 @@ import {
     type EngineConfig,
 } from "./engine/MathJaxConfig";
 import { logger } from "./utils/logger";
+import { fontFileName } from "./utils/resourceUrl";
+import { resolveFontBase } from "./fonts/fontBase";
 import { buildVersionReport, type VersionReport } from "./utils/version";
 import {
     INVASIVE_SOURCE_ATTR,
@@ -283,11 +285,16 @@ export default class LatestMathJaxPlugin extends Plugin {
         await this.preambleFiles.reloadIfPathChanged();
         await this.prepareSelectedFontPack();
         this.resetFontCache();
+        // Apply the new configuration *before* the font cache is inspected: `applyFontSource()`
+        // derives the file names from the live `@font-face` rules, so a family switch has to be
+        // on the engine already. Otherwise the previous family's file names would be downloaded
+        // into the new family's cache directory, and the next render would request files that
+        // are not there (clipped math with a correct URL).
+        const rebuilt = this.engine.updateConfig(this.engineConfig());
         // Font source changes are applied here too. In local mode with an incomplete cache this
         // kicks off the background download and re-applies the font URL when it completes;
         // meanwhile the engine stays on the CDN fallback (docs/offline-fonts.md).
         void this.applyFontSource();
-        const rebuilt = this.engine.updateConfig(this.engineConfig());
         // PDF uses a private SVG engine so export never depends on remote CHTML webfonts.
         this.pdfEngine?.dispose();
         this.pdfEngine = null;
@@ -306,8 +313,14 @@ export default class LatestMathJaxPlugin extends Plugin {
                 ? this.activeFontPack
                 : null;
         if (this.settings.fontFamily !== "newcm" && !selectedPack) {
+            // The requested pack is unavailable: fall back to the bundled family. Keep the local
+            // cache base when it belongs to that family, otherwise the freshly downloaded NewCM
+            // woff2 set would be ignored and the plugin would report itself offline-capable
+            // while still fetching from the CDN.
             config.fontFamily = "newcm";
-            config.fontURL = DEFAULT_FONT_URL;
+            config.fontURL = this.settings.fontSource === "local" && this.localFontResourceDir
+                ? this.effectiveFontUrl()
+                : DEFAULT_FONT_URL;
         } else {
             config.fontPack = selectedPack ?? undefined;
             config.fontURL = this.effectiveFontUrl();
@@ -330,10 +343,14 @@ export default class LatestMathJaxPlugin extends Plugin {
      * metrics-correct CDN behavior while the cache downloads.
      */
     private effectiveFontUrl(): string {
-        if (this.settings.fontSource === "local" && this.localFontResourceDir) {
-            return this.app.vault.adapter.getResourcePath(this.localFontResourceDir);
-        }
-        return this.settings.fontURL;
+        return resolveFontBase({
+            fontSource: this.settings.fontSource,
+            localDir: this.localFontResourceDir,
+            configuredUrl: this.settings.fontURL,
+            // MathJax concatenates "/<file>.woff2" onto the returned base, so the resolver has
+            // to strip any query or fragment the host puts on the resource URL (`fontBase.ts`).
+            resourcePath: (path) => this.app.vault.adapter.getResourcePath(path),
+        });
     }
 
     private resetFontCache(): void {
@@ -387,14 +404,31 @@ export default class LatestMathJaxPlugin extends Plugin {
             return;
         }
         if (!this.engine.isInitialised) this.engine.initialise();
-        const fileNames = this.engine.getFontFaceUrls()
-            .map((url) => url.split("/").pop() ?? url);
-        const result = await this.fontCache.ensureFiles(fileNames);
+        // The names must come from the stylesheet of the family that is about to be served; a
+        // pending family switch has to land on the engine first (see `saveSettings()`).
+        if (this.engine.updateConfig(this.engineConfig())) this.refreshRenderedSurfaces();
+        const family = this.fontCacheFamily;
+        const cache = this.fontCache;
+        const fileNames = this.fontFileNames();
+        if (fileNames.length === 0) return;
+        const result = await cache.ensureFiles(fileNames);
+        // Another settings change may have replaced the cache while the download ran; its result
+        // belongs to a directory nothing references any more.
         if (this.disposed || this.settings.fontSource !== "local") return;
+        if (this.fontCache !== cache || this.fontCacheFamily !== family) return;
+        // A run cancelled by `dispose()` says nothing about the font state; the replacement run
+        // reports for itself. Reporting it would show a spurious "download failed" notice.
+        if (result.error === "cancelled") return;
         if (result.ok) {
-            this.localFontResourceDir = this.fontCache.versionDir();
-            void this.fontCache.cleanOtherVersions();
+            this.localFontResourceDir = cache.versionDir();
+            void cache.cleanOtherVersions();
             this.applyEngineFontUrl();
+            if (result.repaired > 0) {
+                // The faces already failed against the broken files; make the browser read the
+                // repaired ones instead of waiting for the next restart.
+                this.engine.refreshFontFaces();
+                this.refreshRenderedSurfaces();
+            }
             if (result.downloaded > 0) {
                 new Notice(
                     `Latest MathJax: downloaded ${result.downloaded} font file(s) for offline use.`,
@@ -407,6 +441,21 @@ export default class LatestMathJaxPlugin extends Plugin {
                     "font offline. Use \"Download fonts for offline use\" to retry.",
             );
         }
+    }
+
+    /**
+     * File names referenced by the engine's `@font-face` rules.
+     *
+     * Only `.woff2` sources belong to the cache: the SVG renderer embeds its zero-width face as a
+     * `data:` URL, and feeding that back into the downloader would probe the source with a base64
+     * tail — a guaranteed 404 (or a 414) that pollutes the manifest and reports failures.
+     */
+    private fontFileNames(): string[] {
+        return [...new Set(
+            this.engine.getFontFaceUrls()
+                .map(fontFileName)
+                .filter((name) => name.endsWith(".woff2")),
+        )];
     }
 
     /** Reconfigures the engine when the effective font URL changed, refreshing rendered surfaces. */
@@ -422,17 +471,33 @@ export default class LatestMathJaxPlugin extends Plugin {
     private async downloadFontsCommand(): Promise<void> {
         await this.prepareSelectedFontPack();
         this.resetFontCache();
-        if (!this.fontCache) return;
+        const cache = this.fontCache;
+        if (!cache) return;
         if (!this.engine.isInitialised) this.engine.initialise();
-        const names = this.engine.getFontFaceUrls().map((url) => url.split("/").pop() ?? url);
-        const result = await this.fontCache.ensureFiles(names);
+        // Same ordering rule as `applyFontSource()`: the stylesheet must describe the family
+        // being cached, or the command fills the directory with another family's glyph files.
+        if (this.engine.updateConfig(this.engineConfig())) this.refreshRenderedSurfaces();
+        const family = this.fontCacheFamily;
+        const names = this.fontFileNames();
+        if (names.length === 0) {
+            new Notice("Latest MathJax: no woff2 fonts to download for this renderer.");
+            return;
+        }
+        // An explicit retry also re-asks about names a previous run recorded as unavailable, so
+        // a transient 404 (proxy page, rate limit) cannot disable a face for good.
+        const result = await cache.ensureFiles(names, { reprobeUnavailable: true });
+        if (this.fontCache !== cache || this.fontCacheFamily !== family) return;
         if (result.ok) {
-            this.localFontResourceDir = this.fontCache.versionDir();
-            void this.fontCache.cleanOtherVersions();
+            this.localFontResourceDir = cache.versionDir();
+            void cache.cleanOtherVersions();
             if (this.settings.fontSource === "local") this.applyEngineFontUrl();
+            if (result.downloaded > 0 || result.repaired > 0) {
+                this.engine.refreshFontFaces();
+                this.refreshRenderedSurfaces();
+            }
             new Notice(
                 `Latest MathJax: font cache ready (${result.downloaded} downloaded, ` +
-                    `${names.length} total).`,
+                    `${result.repaired} repaired, ${names.length} total).`,
             );
         } else {
             new Notice(
@@ -485,8 +550,19 @@ export default class LatestMathJaxPlugin extends Plugin {
      * one-time Notice explaining why.
      */
     private async applyInvasiveMode(): Promise<void> {
+        if (this.disposed) return;
         const desired = this.settings.invasiveMode;
-        if (desired === this.invasiveActive) return;
+        if (desired === this.invasiveActive) {
+            // `preinstall()` arms a setter trap on `window.MathJax` before any patch exists. If
+            // the user turns invasive mode off before the bundle loads, the runtime state still
+            // matches "off" — but the trap would patch the native entry points on late load,
+            // leaving a patched renderer that reports itself inactive (fail-open). Disarm here.
+            if (!desired && this.bridge) {
+                this.bridge.uninstall();
+                this.bridge = null;
+            }
+            return;
+        }
 
         if (!desired) {
             this.bridge?.uninstall();
@@ -697,6 +773,11 @@ export default class LatestMathJaxPlugin extends Plugin {
     }
 
     private async startupEngine(): Promise<void> {
+        // `onLayoutReady` cannot be unregistered, so disabling the plugin during startup (or a
+        // slow preamble / font-pack read finishing after unload) would otherwise rebuild a
+        // disposed engine, re-inject its styles and re-arm the invasive-mode bridge with the
+        // unloaded instance's closures. Every resume point re-checks the guard.
+        if (this.disposed) return;
         // Load the preamble file before the first build so startup renders once, already with
         // the file's macros applied.
         try {
@@ -704,6 +785,7 @@ export default class LatestMathJaxPlugin extends Plugin {
         } catch (err) {
             logger.warn("preamble file preload failed:", err);
         }
+        if (this.disposed) return;
         try {
             this.engine.initialise();
         } catch (err) {
@@ -712,6 +794,7 @@ export default class LatestMathJaxPlugin extends Plugin {
         }
         if (this.settings.fontFamily !== "newcm" && !this.activeFontPack) {
             await this.prepareSelectedFontPack();
+            if (this.disposed) return;
             if (this.activeFontPack) {
                 this.resetFontCache();
                 if (this.engine.updateConfig(this.engineConfig())) this.refreshRenderedSurfaces();
