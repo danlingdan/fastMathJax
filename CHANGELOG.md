@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.3.0 - 2026-10-22
+
+- Live Preview takeover is now on by default, together with inline math in both surfaces: a fresh
+  install renders display and inline formulas through the bundled engine in Reading View *and* in
+  the editor. Existing installs keep their saved per-surface switches, so nothing changes for them
+  until the switch is flipped. Unknown-macro red text in the editor was usually Obsidian's own
+  MathJax (it has no physics/mathtools extensions), not the bundled engine.
+- Added a **Show math render diagnostics** command. It reports the active view mode, the
+  per-surface settings, the engine's TeX package list, how many Reading-View wrappers were
+  replaced by the bundled engine, why the last pass bailed out, and a direct engine self-check of
+  `\dv`, `\abs`, `\coloneqq` and `\braket`. This separates "the engine was built without the
+  packages" from "the surface never asked the engine" — previously both looked like a red formula
+  in the note.
+
 ## 1.2.1 - 2026-10-22
 
 - Fixed partially clipped equations with **Font source: local cache** when the host decorates
