@@ -3,6 +3,57 @@
 All notable changes to this project are documented here. The format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.2.1 - 2026-10-22
+
+- Fixed partially clipped equations with **Font source: local cache** when the host decorates
+  `app://` resource URLs with a cache-busting query or a fragment (#2). MathJax builds each
+  `@font-face` source as `<fontURL>/<file>.woff2`, so the suffix turned the file name into part
+  of the query, every glyph request failed, and fallback glyphs were laid out with the selected
+  font's metrics. The local font base is now normalized in both places that produce it
+  (`LocalFontCache.ensureFiles()` and the engine's effective font URL), so cached woff2 files
+  load again.
+- The offline font cache no longer trusts its own manifest blindly: a cached file whose size on
+  disk differs from the recorded byte length (interrupted write, sync placeholder, external
+  cleanup) is re-downloaded instead of being served as a broken face — the same clipped-math
+  symptom, with a correct URL.
+- Concurrent font-cache requests now share a single run, so the settings funnel, the "Download
+  fonts" command and a completion callback can no longer download the same files twice or
+  overwrite each other's manifest snapshot.
+- `@font-face` URLs are turned back into file names before the query and fragment are considered,
+  so a CDN base configured with a cache-busting suffix still resolves to names the pinned source
+  serves.
+- Switching the math font while **Font source: local cache** is selected no longer fills the new
+  family's cache directory with the previous family's glyph files. The engine configuration is
+  applied before the cache inspects the live stylesheet, and a download that finishes after
+  another settings change is discarded instead of pointing the engine at an incomplete cache.
+- The offline cache only ever requests `.woff2` files: the SVG renderer's zero-width face is a
+  `data:` URI, and treating it as a download name produced a guaranteed failure (404/414) plus a
+  "download failed" notice on every settings save while the local source was selected.
+- A run in which every name fails now reports a failure instead of serving an empty cache
+  directory, and names recorded as unavailable (404) are re-probed by the "Download fonts"
+  command, so a transient error can no longer disable a glyph face permanently.
+- A repaired cache is applied immediately: the engine re-emits its merged `@font-face` sheet, so
+  faces that had already failed against the truncated files load without a restart. Size
+  verification is rate-limited to once per 30 s, and a run cancelled by a family switch no longer
+  reports a spurious download failure.
+- Engine and DOM lifecycle hardened: a disposed engine refuses to render instead of rebuilding
+  itself, a shared `@font-face` sheet released by the private PDF engine is re-adopted (glyphs
+  no longer disappear after a PDF export followed by any settings change), popout/print-window
+  stylesheet copies are removed on teardown, startup resumes after a plugin disable are guarded,
+  and invasive mode disarms its pre-load setter trap when it is turned off before MathJax loads.
+- A custom **Font file location** is normalized like the local base, so a pasted cache-busting
+  CDN URL (`…?v=1`) no longer produces broken `@font-face` sources in CDN mode either. When the
+  selected family's pack is missing, the NewCM fallback keeps the local cache base instead of
+  silently reverting to the CDN.
+- A transient failure to read a cached font pack no longer deletes it (only corrupt content is
+  dropped), avoiding a needless multi-megabyte re-download.
+- Release tooling hardened: `npm run check` now regenerates the font-pack manifest and fails if the
+  committed copy differs (`scripts/verify-generated.mjs`), the release gate reports missing
+  `font-packs/` or `main.js` with an actionable message instead of an ENOENT stack, rejects a
+  development bundle and a missing changelog section, cross-checks each pack's font version
+  against `MATHJAX_FONT_VERSION`, and `version-bump.mjs` refuses to run outside `npm version`
+  (which previously wrote `"undefined"` into `versions.json`).
+
 ## 1.2.0 - 2026-09-22
 
 - Added every remaining MathJax 4.1.3 full font as an optional verified download: Asana Math,
